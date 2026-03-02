@@ -1,0 +1,13 @@
+node_modules/
+.next/
+out/
+.git/
+*.md
+tests/
+docs/
+prototypes/
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+.env.*

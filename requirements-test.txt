@@ -1,0 +1,16 @@
+# ── Testing dependencies (CI-only) ───────────────────────────
+# Minimal set needed to run structural/compliance tests.
+# Does NOT include agent-framework (not needed for tests).
+
+pytest
+pytest-asyncio
+
+# ── Required by test_mcp_tools.py (imports mcp_server.server) ─
+fastmcp==3.0.0
+
+# ── Required by test_config.py (imports src.config) ──────────
+python-dotenv
+
+# ── Required by test_telemetry.py (imports src.telemetry) ────
+opentelemetry-api
+opentelemetry-sdk

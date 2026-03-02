@@ -1,0 +1,26 @@
+# ── Microsoft Agent Framework (MAF) ──────────────────────────
+agent-framework-core[all] @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python/packages/core
+agent-framework @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python
+agent-framework-ollama @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python/packages/ollama
+agent-framework-orchestrations @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python/packages/orchestrations
+
+# ── MCP ──────────────────────────────────────────────────────
+fastmcp==3.0.0
+
+# ── API Server ───────────────────────────────────────────────
+fastapi[standard]>=0.115.0
+uvicorn[standard]>=0.32.0
+
+# ── Database ─────────────────────────────────────────────────
+sqlalchemy[asyncio]>=2.0.0
+asyncpg>=0.30.0
+
+# ── Telemetry ────────────────────────────────────────────────
+opentelemetry-api
+opentelemetry-sdk
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-distro
+opentelemetry-instrumentation-fastapi
+
+# ── Configuration ────────────────────────────────────────────
+python-dotenv

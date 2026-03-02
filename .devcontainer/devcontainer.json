@@ -1,0 +1,37 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+// README at: https://github.com/devcontainers/templates/tree/main/src/python
+{
+	"name": "Python 3",
+	// Custom Dockerfile to fix expired Yarn GPG key before features install
+	"build": {
+		"dockerfile": "Dockerfile"
+	},
+	"features": {
+		"ghcr.io/devcontainers/features/azure-cli:1": {},
+		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+			"dockerDashComposeVersion": "v2"
+		},
+		"ghcr.io/devcontainers/features/node:1": {}
+	},
+
+	// Ports: Frontend (3000), API (8000), MCP (8090), Ollama (11434),
+	// PostgreSQL (5432), Aspire Dashboard (18888)
+	"forwardPorts": [3000, 8000, 8090, 11434, 5432, 18888],
+
+	// Install Python + Node dependencies after container creation
+	"postCreateCommand": "pip install -r requirements.txt && cd frontend && npm install && cd ..",
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"ms-python.python",
+				"ms-python.pylint",
+				"dbaeumer.vscode-eslint",
+				"bradlc.vscode-tailwindcss"
+			]
+		}
+	}
+
+	// Uncomment to connect as root instead. More info: https://aka.ms/dev-containers-non-root.
+	// "remoteUser": "root"
+}
