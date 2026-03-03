@@ -74,26 +74,28 @@ BMS in real time.
 ## 4. System Architecture
 
 ```
-Operator (Voice)
-      │
-      ▼
-┌─────────────────────┐
-│  Voice Interface     │  ← Web walkie-talkie (push-to-talk)
-│  (Frontend)          │
-└────────┬────────────┘
-         │ audio
-         ▼
-┌─────────────────────┐
-│  Speech Service      │  ← STT: Whisper (offline) / TTS: Piper
-└────────┬────────────┘
-         │ text
-         ▼
+Operator (Field)                       Command Post
+      │                                     │
+      ▼                                     ▼
+┌─────────────────────┐   ┌─────────────────────┐
+│  Walkie-Talkie UI    │   │  BMS Dashboard        │
+│  (push-to-talk)      │   │  (cases + timeline)   │
+└────────┬────────────┘   └────────┬────────────┘
+         │ audio                    │ SSE (live updates)
+         ▼                          │
+┌─────────────────────┐          │
+│  Speech Service      │          │
+│  STT + TTS (GPU)     │          │
+└────────┬────────────┘          │
+         │ text                     │
+         ▼                          ▼
 ┌─────────────────────────────────────────────────────────┐
 │  BMS API (FastAPI)                                       │
-│  ├── Receives operator text                              │
-│  ├── Invokes MAF workflow                                │
-│  ├── Streams responses back (SSE)                        │
-│  └── Serves BMS dashboard (frontend)                     │
+│  ├── /api/voice — operator audio in/out                  │
+│  ├── /api/messages — operator text (fallback)             │
+│  ├── /api/cases — case queries (dashboard)                │
+│  ├── /api/stream — SSE live updates (dashboard)            │
+│  └── Invokes MAF workflow                                │
 └────────┬────────────────────────────────────────────────┘
          │
          ▼
@@ -169,17 +171,33 @@ interaction record. Internal routing messages (handoffs) are optional.
 
 ---
 
-### 5.2 Operator Interface
+### 5.2 Operator Interfaces
 
-A web UI simulating a **walkie-talkie**:
+Two separate web interfaces for different user profiles:
+
+#### Walkie-Talkie UI (Field Operator)
+
+Used by the **field operator** in the area of operations:
 
 - Push-to-talk button (hold to record, release to send)
 - Audio recording sent to backend for STT transcription
 - Agent text responses synthesised to audio via TTS
 - Audio playback to operator
 - Visual indicator of agent processing state
+- No keyboard interaction required
 
-No keyboard interaction required for the primary workflow.
+#### BMS Dashboard (Command Post)
+
+Used by **command staff** at the advanced command post or HQ:
+
+- List of active cases with status and priority
+- Case detail view with full interaction timeline
+- Live updates via SSE (new cases/interactions appear automatically)
+- Read-only view — command staff observes, field operator drives
+
+> In the PoC there are no user profiles, authentication, or roles.
+> Both interfaces are open and can be accessed by anyone on the network.
+> The separation is conceptual (field vs. command post).
 
 ---
 
@@ -428,7 +446,7 @@ infrastructure).
 | `mcp-camera` | bms-ops | No | MCP Camera tool server |
 | `mcp-weather` | bms-ops | No | MCP Weather tool server |
 | `mcp-bms` | bms-ops | No | MCP BMS tool server (PostgreSQL CRUD) |
-| `bms-frontend` | bms-ops | No | Dashboard + walkie-talkie UI |
+| `bms-frontend` | bms-ops | No | BMS Dashboard (command post) + Walkie-Talkie UI (field) |
 | `speech-service` | bms-ops | Yes (1× time-sliced) | faster-whisper STT + Piper TTS (GPU) |
 | `postgresql` | db | No | Shared database (already exists) |
 

@@ -8,17 +8,19 @@ inference via [Ollama](https://ollama.com).
 ## Architecture
 
 ```
-Operator (Voice — Spanish)
-      │
-      ▼
-┌─────────────────┐   ┌──────────────────┐
-│ Walkie-Talkie UI │──▶│ Speech Service    │  faster-whisper (STT) + Piper (TTS)
-└─────────────────┘   └────────┬─────────┘
-                               │ text
-                               ▼
-                      ┌──────────────────┐
-                      │ BMS API (FastAPI) │  operator messages + dashboard + SSE
-                      └────────┬─────────┘
+Field Operator           Command Post (HQ)
+      │                        │
+      ▼                        ▼
+┌─────────────────┐  ┌─────────────────┐
+│ Walkie-Talkie │  │ BMS Dashboard   │
+│ (voice I/O)   │  │ (cases + live)  │
+└────────┬────────┘  └────────┬────────┘
+         │ audio          │ SSE
+         ▼                ▼
+┌─────────────────┐  ┌─────────────────────────┐
+│ Speech Service  │─▶│ BMS API (FastAPI)          │
+│ STT + TTS (GPU) │  │ /voice, /cases, /stream   │
+└─────────────────┘  └──────────┬──────────────┘
                                │
                                ▼
                 ┌──────────────────────────────┐
