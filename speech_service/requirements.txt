@@ -1,0 +1,7 @@
+faster-whisper
+piper-tts
+fastapi
+uvicorn
+prometheus-client
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi
