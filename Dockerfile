@@ -16,7 +16,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY src/ ./src/
 
 # Default env (overridden by K8s ConfigMap/env)
-ENV OLLAMA_HOST=http://ollama.maflocal.svc.cluster.local:11434
+ENV OLLAMA_HOST=http://ollama.shared-services.svc.cluster.local:11434
 ENV OLLAMA_MODEL_ID=qwen2.5:7b
 ENV PYTHONUNBUFFERED=1
 

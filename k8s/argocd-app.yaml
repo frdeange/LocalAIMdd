@@ -11,7 +11,7 @@ spec:
     # Mirror this GitHub repo to Gitea, then point here
     repoURL: https://gitea.maf.local/kiko/LocalAIMdd.git
     targetRevision: main
-    path: k8s
+    path: k8s/bms-ops
   destination:
     server: https://kubernetes.default.svc
     namespace: bms-ops
