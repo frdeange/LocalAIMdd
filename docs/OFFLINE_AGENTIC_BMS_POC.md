@@ -44,7 +44,7 @@ a production system.
 | Git             | Gitea (gitea.maf.local)                         |
 | GitOps          | ArgoCD (argocd.maf.local)                       |
 | Database        | PostgreSQL (db namespace, already provisioned)   |
-| Monitoring      | Grafana + Prometheus (monitoring namespace)      |
+| Monitoring      | Grafana + Prometheus + Tempo (monitoring namespace) |
 
 ### Offline Requirement
 
@@ -310,6 +310,18 @@ These are not simple scripts — they are proper MCP tool servers that
 agents call via the Model Context Protocol. This applies to simulated
 sensors (Camera, Weather) and to the BMS database (case management).
 
+### Technology
+
+All MCP servers are built with **FastMCP ≥ 3.1**
+([gofastmcp.com](https://gofastmcp.com)).
+
+| Aspect | Detail |
+|---|---|
+| Framework | FastMCP v3.1+ |
+| Transport | SSE (for K8s network access) or stdio (for local dev) |
+| Telemetry | Built-in — FastMCP exposes OpenTelemetry traces automatically |
+| Language | Python 3.13 |
+
 ### 7.1 MCP Camera Service
 
 | Field | Value |
@@ -430,11 +442,85 @@ infrastructure).
 - Gitea (Git repository mirror)
 - cert-manager + ingress-nginx (TLS + routing)
 - MetalLB (load balancer)
-- Grafana + Prometheus (monitoring)
+- Grafana + Prometheus + Alertmanager (monitoring)
+- Grafana Tempo (distributed tracing)
 
 ---
 
-## 11. Known Technical Constraints
+## 11. Observability & Monitoring
+
+All services **MUST** be observable. The PoC uses a three-pillar
+approach: metrics, distributed traces, and logs.
+
+### 11.1 Stack
+
+| Pillar | Tool | Namespace | Purpose |
+|---|---|---|---|
+| **Metrics** | Prometheus | monitoring | Scrape application and system metrics |
+| **Tracing** | Grafana Tempo | monitoring | Distributed trace storage and query |
+| **Dashboards** | Grafana | monitoring | Visualisation (`grafana.maf.local`) |
+| **Alerting** | Alertmanager | monitoring | Alert routing (pre-existing) |
+| **Instrumentation** | OpenTelemetry SDK | (in-app) | Automatic span and metric generation |
+
+> Prometheus, Grafana, and Alertmanager are already running in the
+> cluster (kube-prometheus-stack). Tempo needs to be deployed.
+
+### 11.2 Telemetry Sources
+
+Three components generate OpenTelemetry traces **automatically**:
+
+| Source | What It Traces |
+|---|---|
+| **MAF (Microsoft Agent Framework)** | Agent invocations, handoff routing, LLM calls, tool execution |
+| **FastMCP (MCP servers)** | Tool call latency, invocation counts, input/output |
+| **FastAPI (BMS API)** | HTTP request handling, SSE streaming, endpoint latency |
+
+All traces are exported via **OTLP (gRPC)** to Grafana Tempo.
+
+```
+MAF agents (auto-traces) ───┐
+FastMCP servers (auto-traces) ─┼──→ OTLP exporter ──→ Tempo ──→ Grafana
+FastAPI (auto-instrumented) ──┘
+```
+
+### 11.3 What Gets Monitored
+
+| Layer | Metrics | Traces |
+|---|---|---|
+| **MAF Agents** | — | Handoff chain, tool calls, LLM latency |
+| **MCP Services** | Tool call count, error rate | Per-tool invocation spans (FastMCP built-in) |
+| **BMS API** | HTTP request rate/latency/errors | Request → workflow → response spans |
+| **Speech Service** | STT/TTS latency histograms | Per-transcription and per-synthesis spans |
+| **Ollama** | Inference latency, token throughput | (via Ollama metrics endpoint) |
+| **PostgreSQL** | Connection pool, query latency | (via prometheus postgres-exporter) |
+
+### 11.4 Agent Tracing Example
+
+A single operator message produces a distributed trace showing:
+
+```
+BMS API: POST /api/messages
+└─ MAF L3: Orchestrator
+   ├─ handoff → CaseManager
+   │  └─ MCP BMS: create_case (FastMCP auto-span)
+   └─ handoff → FieldSpecialist (facade)
+      └─ MAF L2: FieldCoordinator
+         └─ handoff → ReconAgent (facade)
+            └─ MAF L1: ConcurrentBuilder
+               ├─ CameraAgent → MCP Camera: get_camera_feed
+               └─ MeteoAgent → MCP Weather: get_weather_report
+```
+
+### 11.5 Kubernetes Integration
+
+- **ServiceMonitors** per Python service (auto-discovered by Prometheus)
+- **PodMonitors** where ServiceMonitors are not applicable
+- Custom **Grafana dashboards** for BMS operational view
+- All services expose `/metrics` (Prometheus format)
+
+---
+
+## 12. Known Technical Constraints
 
 | Constraint | Impact | Mitigation |
 |---|---|---|
@@ -447,14 +533,15 @@ infrastructure).
 
 ---
 
-## 12. Expected PoC Outcomes
+## 13. Expected PoC Outcomes
 
 The PoC **MUST** demonstrate:
 
 1. **Voice-driven agent orchestration** — operator speaks, agents act
 2. **3-level nested multi-agent collaboration** — HandoffBuilder + ConcurrentBuilder + facade pattern
-3. **MCP-based tool abstraction** — Camera, Weather, and BMS as MCP server tools
+3. **MCP-based tool abstraction** — Camera, Weather, and BMS as FastMCP server tools
 4. **Offline AI execution** — all inference local via Ollama
 5. **Persistent operational logging** — every agent action stored in BMS (PostgreSQL)
 6. **Real-time dashboard** — live case/interaction updates in web UI
 7. **Kubernetes deployment** — all components containerised and managed via GitOps
+8. **Full observability** — distributed traces of agent handoffs and MCP calls visible in Grafana

@@ -192,13 +192,25 @@ agents call via the Model Context Protocol. This validates the
 architectural principle: **all external system access from agents goes
 through MCP — no exceptions.**
 
+### Technology: FastMCP v3.1+
+
+All MCP servers **MUST** be built with **FastMCP ≥ 3.1**
+([gofastmcp.com](https://gofastmcp.com)).
+
+| Aspect | Detail |
+|---|---|
+| Framework | FastMCP v3.1+ (`pip install fastmcp`) |
+| Transport | SSE (K8s) or stdio (local dev) |
+| Telemetry | **Built-in** — FastMCP exposes OpenTelemetry traces automatically |
+| Python | 3.13 |
+
 ### 1.1 MCP Camera Service
 
 **File:** `mcp_services/camera_server.py`
 
 | Detail | Value |
 |---|---|
-| Framework | `mcp` Python SDK (or `fastmcp`) |
+| Framework | **FastMCP ≥ 3.1** |
 | Transport | stdio (for local) or SSE (for K8s) |
 | Tool: `get_camera_feed` | Input: `latitude: float`, `longitude: float`, `zoom_level: int` |
 | Output | JSON: `{ target_description, image_quality, visibility, tactical_notes }` |
@@ -243,7 +255,7 @@ SECTORS = {
 
 | Detail | Value |
 |---|---|
-| Framework | `mcp` Python SDK (or `fastmcp`) |
+| Framework | **FastMCP ≥ 3.1** |
 | Transport | stdio (for local) or SSE (for K8s) |
 | Database | PostgreSQL (async via `asyncpg`) |
 | Tools | `create_case`, `update_case`, `add_interaction`, `get_case`, `list_cases` |
@@ -283,8 +295,7 @@ async def create_case(summary: str, priority: str = "MEDIUM",
 **File:** `mcp_services/requirements.txt`
 
 ```
-mcp>=1.0.0
-# or: fastmcp
+fastmcp>=3.1.0
 asyncpg          # PostgreSQL async driver (for MCP BMS)
 ```
 
@@ -829,12 +840,14 @@ Execute the full conversation flow:
 - [ ] Dashboard updates in real time during the conversation
 - [ ] Each agent response is traceable in the interaction log
 - [ ] System works completely offline
+- [ ] Agent handoff traces visible in Grafana (via Tempo)
 
 ---
 
 ## Phase 8 — Kubernetes Deployment
 
-**Goal:** All components deployed to the K8s cluster via GitOps.
+**Goal:** All components deployed to the K8s cluster via GitOps,
+including the observability stack (Tempo + ServiceMonitors + dashboards).
 
 ### 8.1 Container Images
 
@@ -870,6 +883,10 @@ k8s/
 │   ├── mcp-bms.yaml         # MCP BMS service (PostgreSQL CRUD)
 │   ├── speech-service.yaml  # STT + TTS (GPU)
 │   └── ingress.yaml         # bms.maf.local → bms-api
+├── monitoring/              # Observability resources
+│   ├── tempo.yaml           # Grafana Tempo deployment + service
+│   ├── servicemonitors.yaml # Per-service Prometheus scrape configs
+│   └── dashboards/          # Grafana dashboard ConfigMaps
 └── argocd-app.yaml          # GitOps application (path: k8s/bms-ops)
 ```
 
@@ -883,7 +900,9 @@ k8s/
 | bms-api | MCP Weather | `http://mcp-weather.bms-ops.svc.cluster.local:8091` |
 | bms-api | MCP BMS | `http://mcp-bms.bms-ops.svc.cluster.local:8093` |
 | bms-api | Speech | `http://speech-service.bms-ops.svc.cluster.local:8092` |
+| All services | Tempo (OTLP) | `http://tempo.monitoring.svc.cluster.local:4317` |
 | Browser | bms-api | `https://bms.maf.local` (via ingress) |
+| Browser | Grafana | `https://grafana.maf.local` (pre-existing) |
 
 ### 8.4 Resource Budget (Single Node)
 
@@ -901,13 +920,18 @@ k8s/
 
 ### 8.5 Deployment Steps
 
-1. Build and push all images to Nexus
-2. Create DB, schema, and user in PostgreSQL
-3. Create K8s secrets (DB credentials, registry pull secret)
-4. Apply K8s manifests (or push to Gitea for ArgoCD)
-5. Verify all pods running
-6. Create ingress for `bms.maf.local`
-7. End-to-end smoke test from browser
+1. Deploy Grafana Tempo to `monitoring` namespace
+2. Add Tempo as Grafana datasource
+3. Build and push all images to Nexus
+4. Create DB, schema, and user in PostgreSQL
+5. Create K8s secrets (DB credentials, registry pull secret)
+6. Apply K8s manifests (or push to Gitea for ArgoCD)
+7. Apply ServiceMonitors for each Python service
+8. Import Grafana dashboards
+9. Verify all pods running
+10. Create ingress for `bms.maf.local`
+11. End-to-end smoke test from browser
+12. Verify traces appear in Grafana → Tempo
 
 ### Acceptance Criteria
 
@@ -915,6 +939,8 @@ k8s/
 - [ ] Cross-namespace DNS works (bms-ops → shared-services, bms-ops → db)
 - [ ] Ingress routes to BMS frontend and API
 - [ ] ArgoCD shows Synced/Healthy
+- [ ] Agent traces visible in Grafana (Tempo datasource)
+- [ ] Prometheus scrapes metrics from all Python services
 - [ ] Full E2E test passes from browser
 
 ---
@@ -937,6 +963,8 @@ k8s/
 | 8 | GitOps | Code push to Gitea triggers ArgoCD sync |
 | 9 | Deterministic sensors | Same coordinates produce same camera/weather data |
 | 10 | Case lifecycle | Case OPEN → IN_PROGRESS → CLOSED visible in UI |
+| 11 | Observability | Agent handoff traces visible in Grafana via Tempo |
+| 12 | Metrics | All services expose /metrics, Prometheus scrapes them |
 
 ### 9.2 Demo Scenario Script
 
@@ -955,6 +983,8 @@ k8s/
 - [ ] PostgreSQL query showing created cases and interactions
 - [ ] `kubectl get pods` showing all components running
 - [ ] ArgoCD screenshot showing Synced/Healthy
+- [ ] Grafana trace screenshot showing full agent handoff chain
+- [ ] Grafana dashboard screenshot showing service metrics
 
 ---
 
