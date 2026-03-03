@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-weather
+  namespace: bms-ops
+  labels:
+    app: mcp-weather
+    app.kubernetes.io/part-of: bms-operations
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-weather
+  template:
+    metadata:
+      labels:
+        app: mcp-weather
+    spec:
+      containers:
+        - name: mcp-weather
+          image: docker.maf.local/bms-ops/mcp-weather:latest
+          imagePullPolicy: Always
+          ports:
+            - name: mcp
+              containerPort: 8091
+          envFrom:
+            - configMapRef:
+                name: bms-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+      imagePullSecrets:
+        - name: nexus-registry-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-weather
+  namespace: bms-ops
+  labels:
+    app: mcp-weather
+spec:
+  selector:
+    app: mcp-weather
+  ports:
+    - name: mcp
+      port: 8091
+      targetPort: 8091

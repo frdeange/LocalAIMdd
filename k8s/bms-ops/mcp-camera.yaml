@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-camera
+  namespace: bms-ops
+  labels:
+    app: mcp-camera
+    app.kubernetes.io/part-of: bms-operations
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-camera
+  template:
+    metadata:
+      labels:
+        app: mcp-camera
+    spec:
+      containers:
+        - name: mcp-camera
+          image: docker.maf.local/bms-ops/mcp-camera:latest
+          imagePullPolicy: Always
+          ports:
+            - name: mcp
+              containerPort: 8090
+          envFrom:
+            - configMapRef:
+                name: bms-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "64Mi"
+            limits:
+              cpu: "250m"
+              memory: "128Mi"
+      imagePullSecrets:
+        - name: nexus-registry-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-camera
+  namespace: bms-ops
+  labels:
+    app: mcp-camera
+spec:
+  selector:
+    app: mcp-camera
+  ports:
+    - name: mcp
+      port: 8090
+      targetPort: 8090

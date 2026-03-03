@@ -7,8 +7,21 @@ metadata:
     app.kubernetes.io/name: bms-operations
     app.kubernetes.io/part-of: bms-operations
 data:
-  # Ollama runs in shared-services namespace — cross-namespace DNS
+  # ── Ollama ──────────────────────────────────────────────────
   OLLAMA_HOST: "http://ollama.shared-services.svc.cluster.local:11434"
   OLLAMA_MODEL_ID: "qwen2.5:7b"
+  # ── MCP Services ───────────────────────────────────────────
+  MCP_CAMERA_URL: "http://mcp-camera.bms-ops.svc.cluster.local:8090/mcp"
+  MCP_WEATHER_URL: "http://mcp-weather.bms-ops.svc.cluster.local:8091/mcp"
+  MCP_BMS_URL: "http://mcp-bms.bms-ops.svc.cluster.local:8093/mcp"
+  # ── Database ────────────────────────────────────────────────
+  DATABASE_URL: "postgresql://bms_ops:BmsOps2026@postgres.db.svc.cluster.local:5432/bms_ops"
+  # ── Speech ──────────────────────────────────────────────────
+  SPEECH_SERVICE_URL: "http://speech-service.bms-ops.svc.cluster.local:8092"
+  WHISPER_DEVICE: "cuda"
+  WHISPER_COMPUTE: "float16"
+  # ── Telemetry ───────────────────────────────────────────────
+  OTEL_EXPORTER_OTLP_ENDPOINT: "http://tempo.monitoring.svc.cluster.local:4317"
+  # ── Application ─────────────────────────────────────────────
   BMS_LOG_LEVEL: "INFO"
   BMS_MAX_TURNS: "30"

@@ -95,5 +95,5 @@ async def get_camera_feed(
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("MCP_CAMERA_PORT", "8090"))
+    port = int(os.getenv("CAMERA_SERVER_PORT", "8090"))
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port)

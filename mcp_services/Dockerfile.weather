@@ -1,0 +1,18 @@
+# ── MCP Weather Service ───────────────────────────────────────
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY mcp_services/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY mcp_services/__init__.py ./mcp_services/__init__.py
+COPY mcp_services/telemetry.py ./mcp_services/telemetry.py
+COPY mcp_services/weather_server.py ./mcp_services/weather_server.py
+
+ENV PYTHONUNBUFFERED=1
+ENV WEATHER_SERVER_PORT=8091
+
+EXPOSE 8091
+
+CMD ["python", "-m", "mcp_services.weather_server"]

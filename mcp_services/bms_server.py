@@ -246,5 +246,5 @@ async def list_cases(
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("MCP_BMS_PORT", "8093"))
+    port = int(os.getenv("BMS_SERVER_PORT", "8093"))
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port)

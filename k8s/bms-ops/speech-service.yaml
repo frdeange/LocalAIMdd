@@ -1,0 +1,65 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: speech-service
+  namespace: bms-ops
+  labels:
+    app: speech-service
+    app.kubernetes.io/part-of: bms-operations
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: speech-service
+  template:
+    metadata:
+      labels:
+        app: speech-service
+    spec:
+      containers:
+        - name: speech-service
+          image: docker.maf.local/bms-ops/speech-service:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8092
+          envFrom:
+            - configMapRef:
+                name: bms-config
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+              nvidia.com/gpu: "1"
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 60
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: 8092
+            initialDelaySeconds: 30
+            periodSeconds: 10
+      imagePullSecrets:
+        - name: nexus-registry-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: speech-service
+  namespace: bms-ops
+  labels:
+    app: speech-service
+spec:
+  selector:
+    app: speech-service
+  ports:
+    - name: http
+      port: 8092
+      targetPort: 8092

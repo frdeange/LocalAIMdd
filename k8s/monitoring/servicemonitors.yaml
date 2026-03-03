@@ -1,0 +1,60 @@
+# ServiceMonitors for BMS PoC services
+# Prometheus auto-discovers these and scrapes /metrics
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: bms-api
+  namespace: monitoring
+  labels:
+    app: bms-api
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames: ["bms-ops"]
+  selector:
+    matchLabels:
+      app: bms-api
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: speech-service
+  namespace: monitoring
+  labels:
+    app: speech-service
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames: ["bms-ops"]
+  selector:
+    matchLabels:
+      app: speech-service
+  endpoints:
+    - port: http
+      path: /metrics
+      interval: 15s
+---
+# Ollama metrics (shared-services namespace)
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: ollama
+  namespace: monitoring
+  labels:
+    app: ollama
+    release: monitoring
+spec:
+  namespaceSelector:
+    matchNames: ["shared-services"]
+  selector:
+    matchLabels:
+      app: ollama
+  endpoints:
+    - port: api
+      path: /metrics
+      interval: 30s

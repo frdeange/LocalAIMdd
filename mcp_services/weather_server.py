@@ -104,5 +104,5 @@ async def get_weather_report(
 
 
 if __name__ == "__main__":
-    port = int(os.getenv("MCP_WEATHER_PORT", "8091"))
+    port = int(os.getenv("WEATHER_SERVER_PORT", "8091"))
     mcp.run(transport="streamable-http", host="0.0.0.0", port=port)

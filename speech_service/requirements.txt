@@ -2,6 +2,7 @@ faster-whisper
 piper-tts
 fastapi
 uvicorn
+python-multipart
 prometheus-client
 opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-instrumentation-fastapi

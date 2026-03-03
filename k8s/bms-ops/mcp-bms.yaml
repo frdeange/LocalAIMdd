@@ -1,0 +1,52 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mcp-bms
+  namespace: bms-ops
+  labels:
+    app: mcp-bms
+    app.kubernetes.io/part-of: bms-operations
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mcp-bms
+  template:
+    metadata:
+      labels:
+        app: mcp-bms
+    spec:
+      containers:
+        - name: mcp-bms
+          image: docker.maf.local/bms-ops/mcp-bms:latest
+          imagePullPolicy: Always
+          ports:
+            - name: mcp
+              containerPort: 8093
+          envFrom:
+            - configMapRef:
+                name: bms-config
+          resources:
+            requests:
+              cpu: "100m"
+              memory: "128Mi"
+            limits:
+              cpu: "250m"
+              memory: "256Mi"
+      imagePullSecrets:
+        - name: nexus-registry-secret
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mcp-bms
+  namespace: bms-ops
+  labels:
+    app: mcp-bms
+spec:
+  selector:
+    app: mcp-bms
+  ports:
+    - name: mcp
+      port: 8093
+      targetPort: 8093

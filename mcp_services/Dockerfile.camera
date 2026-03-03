@@ -1,0 +1,18 @@
+# ── MCP Camera Service ────────────────────────────────────────
+FROM python:3.13-slim
+
+WORKDIR /app
+
+COPY mcp_services/requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+COPY mcp_services/__init__.py ./mcp_services/__init__.py
+COPY mcp_services/telemetry.py ./mcp_services/telemetry.py
+COPY mcp_services/camera_server.py ./mcp_services/camera_server.py
+
+ENV PYTHONUNBUFFERED=1
+ENV CAMERA_SERVER_PORT=8090
+
+EXPOSE 8090
+
+CMD ["python", "-m", "mcp_services.camera_server"]
