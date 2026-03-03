@@ -70,6 +70,9 @@ Context Protocol). MCP servers built with **FastMCP ≥ 3.1**.
 ├── mcp_services/            # FastMCP servers (Camera, Weather, BMS)
 ├── bms_api/                 # BMS REST API (FastAPI)
 ├── speech_service/          # STT + TTS service
+├── frontend/                # Web interfaces
+│   ├── walkie_talkie/       # Field operator — push-to-talk voice UI
+│   └── bms_dashboard/       # Command post — cases + live timeline
 ├── k8s/                     # Kubernetes manifests
 │   ├── shared-services/     # Ollama deployment
 │   ├── bms-ops/             # BMS application resources
