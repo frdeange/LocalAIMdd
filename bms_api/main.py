@@ -313,20 +313,20 @@ async def _poll_new_interactions():
 
 
 # ── Operator Messages ────────────────────────────────────────
-# Placeholder — will integrate MAF workflow in Phase 3
+
+from bms_api.workflow import run_agent_workflow
+
 
 @app.post("/api/messages", response_model=MessageResponse)
 async def handle_message(body: OperatorMessage):
-    """Process operator text message through the agent workflow.
+    """Process operator text message through the MAF agent workflow.
 
-    Currently a placeholder — returns a stub response.
-    MAF workflow integration will be added in Phase 3/7.
+    Sends the operator text to the 3-level nested workflow
+    (Orchestrator → CaseManager / FieldSpecialist → Camera/Meteo/Vehicle).
+    Returns the agent's response text.
     """
-    # TODO: Phase 3/7 — invoke MAF workflow here
-    # response_text = await run_workflow(body.text)
-    return MessageResponse(
-        response=f"[BMS API placeholder] Received: {body.text}"
-    )
+    response_text = await run_agent_workflow(body.text)
+    return MessageResponse(response=response_text)
 
 
 # ── Voice Endpoint ───────────────────────────────────────────
