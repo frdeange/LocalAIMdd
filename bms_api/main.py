@@ -17,8 +17,14 @@ This API reads from the same DB for the dashboard.
 import asyncio
 import json
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
+
+# ── Telemetry (must be before FastAPI import for proper instrumentation) ──
+from bms_api.telemetry import configure_telemetry
+
+configure_telemetry()
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
