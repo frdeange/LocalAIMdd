@@ -4,12 +4,13 @@ MCP Weather Service — Simulated Meteorological Data
 FastMCP server that provides deterministic weather data
 based on coordinate sectors. All data is mocked.
 
-Run standalone:  python -m mcp_services.weather_server
-Run via stdio:   (used by MAF MCPStdioTool)
+Run:  python -m mcp_services.weather_server
+Default: streamable-http on port 8091
 """
 
 import asyncio
 import json
+import os
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -99,4 +100,5 @@ async def get_weather_report(
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    port = int(os.getenv("MCP_WEATHER_PORT", "8091"))
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)

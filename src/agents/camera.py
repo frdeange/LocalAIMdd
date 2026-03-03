@@ -1,9 +1,9 @@
 """CameraAgent — Surveillance camera operator (MCP-connected)."""
 
-import sys
-
-from agent_framework import Agent, MCPStdioTool
+from agent_framework import Agent, MCPStreamableHTTPTool
 from agent_framework.ollama import OllamaChatClient
+
+from src.config import MCP_CAMERA_URL
 
 CAMERA_INSTRUCTIONS = """\
 You are a surveillance camera operator in a battlefield management system.
@@ -23,10 +23,9 @@ When given coordinates or a target location:
 
 def create_camera_agent(client: OllamaChatClient) -> Agent:
     """Create the CameraAgent with MCP Camera tool."""
-    camera_mcp = MCPStdioTool(
+    camera_mcp = MCPStreamableHTTPTool(
         name="camera_mcp",
-        command=sys.executable,
-        args=["-m", "mcp_services.camera_server"],
+        url=MCP_CAMERA_URL,
         description="Surveillance camera system",
     )
     return client.as_agent(

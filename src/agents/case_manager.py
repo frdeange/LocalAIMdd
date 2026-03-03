@@ -1,9 +1,9 @@
 """CaseManager — Incident case management agent (MCP-connected)."""
 
-import sys
-
-from agent_framework import Agent, MCPStdioTool
+from agent_framework import Agent, MCPStreamableHTTPTool
 from agent_framework.ollama import OllamaChatClient
+
+from src.config import MCP_BMS_URL
 
 CASE_MANAGER_INSTRUCTIONS = """\
 You are a case management officer in a battlefield management system.
@@ -28,10 +28,9 @@ Always use the tools. Never hallucinate case IDs or data.
 
 def create_case_manager(client: OllamaChatClient) -> Agent:
     """Create the CaseManager agent with MCP BMS tools."""
-    bms_mcp = MCPStdioTool(
+    bms_mcp = MCPStreamableHTTPTool(
         name="bms_mcp",
-        command=sys.executable,
-        args=["-m", "mcp_services.bms_server"],
+        url=MCP_BMS_URL,
         description="BMS case management database",
     )
     return client.as_agent(

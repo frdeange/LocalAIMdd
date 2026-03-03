@@ -4,12 +4,13 @@ MCP Camera Service — Simulated Surveillance Camera
 FastMCP server that simulates a pan-tilt-zoom camera system.
 Returns deterministic observation data based on coordinate sectors.
 
-Run standalone:  python -m mcp_services.camera_server
-Run via stdio:   (used by MAF MCPStdioTool)
+Run:  python -m mcp_services.camera_server
+Default: streamable-http on port 8090
 """
 
 import asyncio
 import json
+import os
 from typing import Annotated
 
 from fastmcp import FastMCP
@@ -90,4 +91,5 @@ async def get_camera_feed(
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    port = int(os.getenv("MCP_CAMERA_PORT", "8090"))
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)

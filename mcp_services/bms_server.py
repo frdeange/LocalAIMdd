@@ -6,12 +6,12 @@ interactions, backed by a real PostgreSQL database.
 
 Unlike Camera and Weather (simulated), this service persists real data.
 
-Run standalone:  python -m mcp_services.bms_server
-Run via stdio:   (used by MAF MCPStdioTool)
+Run:  python -m mcp_services.bms_server
+Default: streamable-http on port 8093
 
 Environment variables:
-    DATABASE_URL  PostgreSQL connection string
-                  Default: postgresql://bms_ops:BmsOps2026@localhost:5432/bms_ops
+    DATABASE_URL      PostgreSQL connection string
+    MCP_BMS_PORT      Server port (default: 8093)
 """
 
 import asyncio
@@ -242,4 +242,5 @@ async def list_cases(
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    port = int(os.getenv("MCP_BMS_PORT", "8093"))
+    mcp.run(transport="streamable-http", host="0.0.0.0", port=port)

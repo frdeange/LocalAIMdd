@@ -1,9 +1,9 @@
 """MeteoAgent — Meteorological analyst (MCP-connected)."""
 
-import sys
-
-from agent_framework import Agent, MCPStdioTool
+from agent_framework import Agent, MCPStreamableHTTPTool
 from agent_framework.ollama import OllamaChatClient
+
+from src.config import MCP_WEATHER_URL
 
 METEO_INSTRUCTIONS = """\
 You are a meteorological analyst in a battlefield management system.
@@ -23,10 +23,9 @@ When given coordinates or a target location:
 
 def create_meteo_agent(client: OllamaChatClient) -> Agent:
     """Create the MeteoAgent with MCP Weather tool."""
-    weather_mcp = MCPStdioTool(
+    weather_mcp = MCPStreamableHTTPTool(
         name="weather_mcp",
-        command=sys.executable,
-        args=["-m", "mcp_services.weather_server"],
+        url=MCP_WEATHER_URL,
         description="Meteorological weather station",
     )
     return client.as_agent(
