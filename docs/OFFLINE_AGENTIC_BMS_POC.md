@@ -344,7 +344,7 @@ All MCP servers are built with **FastMCP ≥ 3.1**
 
 | Field | Value |
 |---|---|
-| Transport | SSE or stdio |
+| Transport | **streamable-http** |
 | Tool name | `get_camera_feed` |
 | Input | `coordinates` (lat, lon), `zoom_level` |
 | Output | Simulated observation (text description + metadata) |
@@ -354,7 +354,7 @@ All MCP servers are built with **FastMCP ≥ 3.1**
 
 | Field | Value |
 |---|---|
-| Transport | SSE or stdio |
+| Transport | **streamable-http** |
 | Tool name | `get_weather_report` |
 | Input | `coordinates` (lat, lon) |
 | Output | `temperature`, `conditions`, `wind_speed`, `visibility_km`, `risk_level` |
@@ -367,7 +367,7 @@ not real sensor data.
 
 | Field | Value |
 |---|---|
-| Transport | SSE or stdio |
+| Transport | **streamable-http** |
 | Tool: `create_case` | Input: `summary`, `priority`, `coordinates` → Output: `case_id` |
 | Tool: `update_case` | Input: `case_id`, `status`, `priority` → Output: confirmation |
 | Tool: `add_interaction` | Input: `case_id`, `agent_name`, `message` → Output: `interaction_id` |

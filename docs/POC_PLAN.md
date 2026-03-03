@@ -39,46 +39,80 @@
 | Ollama + qwen2.5:7b with tool calling | ✅ Validated | Routing works (not perfect, but functional) |
 | MAF Ollama kwargs bug workaround | ✅ Validated | Monkey-patch in `src/patch_ollama.py` |
 | Inner HITL auto-response mechanism | ✅ Validated | L2 facade auto-responds to inner HITL |
-| Dockerfile + container image build | ✅ Validated | Image pushed to Nexus registry |
-| K8s deployment (bms-ops namespace) | ✅ Validated | Pod ran demo successfully |
+| MAF `MCPStreamableHTTPTool` — native MCP support | ✅ Validated | Auto-discovers tools from FastMCP servers |
+| FastMCP 3.1 `streamable-http` transport | ✅ Validated | Camera :8090, Weather :8091, BMS :8093 |
+| MCP Camera → deterministic sector data | ✅ Validated | Sector NW returns consistent field observation |
+| MCP Weather → deterministic weather data | ✅ Validated | Sector NW: 12°C, overcast, 3.5km visibility |
+| MCP BMS → PostgreSQL real CRUD | ✅ Validated | BMS-2026-001, BMS-2026-002 created in DB |
+| BMS API (FastAPI) — /cases, /stream SSE, /metrics | ✅ Validated | Returns real cases from PostgreSQL |
+| BMS Dashboard — live case viewer | ✅ Validated | Tactical UI with SSE feed |
+| Speech STT (faster-whisper, Spanish) | ✅ Validated | 1.19s transcription, confidence 1.0 |
+| Speech TTS (Piper, es_ES-davefx-medium) | ✅ Validated | 0.07s synthesis, natural voice |
+| Voice pipeline (/api/voice) | ✅ Validated | Audio → STT → MAF → TTS → Audio |
+| Full E2E: /api/messages → MAF workflow → MCP tools | ✅ Validated | Recon report with Camera + Weather MCP data |
+| Telemetry pre-wiring (OTel + Prometheus) | ✅ Validated | All services have OTel config + /metrics |
+| GPU time-slicing (NVIDIA device plugin) | ✅ Validated | 3 replicas on 1 physical GPU |
 | GitOps pipeline (Gitea → ArgoCD) | ✅ Validated | Auto-sync works |
-| Cross-namespace Ollama connectivity | ✅ Validated | bms-ops→maflocal DNS resolution works |
 
 ### What Exists in Code
 
 ```
-src/
-├── __init__.py, __main__.py       # Package + CLI entry point
-├── config.py                      # Environment-driven config
-├── client.py                      # OllamaChatClient factory
-├── patch_ollama.py                # MAF bug #4402 workaround
-├── runner.py                      # Interactive + demo runner
+src/                          # Agent core (MAF workflows + agents)
+├── config.py                 # Env-driven config (Ollama, MCP URLs)
+├── client.py                 # OllamaChatClient factory
+├── patch_ollama.py           # MAF bug #4402 workaround
+├── telemetry.py              # OTel TracerProvider + OTLP exporter
+├── runner.py                 # CLI entry point (interactive + demo)
 ├── agents/
-│   ├── camera.py                  # CameraAgent (leaf, no MCP yet)
-│   ├── meteo.py                   # MeteoAgent (leaf, no MCP yet)
-│   ├── vehicle.py                 # VehicleExpert (leaf)
-│   ├── case_manager.py            # CaseManager (no DB yet)
-│   ├── field_coordinator.py       # FieldCoordinator (L2 router)
-│   └── orchestrator.py            # Orchestrator (L3 router)
+│   ├── camera.py             # CameraAgent → MCP Camera (streamable-http)
+│   ├── meteo.py              # MeteoAgent → MCP Weather (streamable-http)
+│   ├── vehicle.py            # VehicleExpert (leaf, no MCP)
+│   ├── case_manager.py       # CaseManager → MCP BMS (streamable-http)
+│   ├── field_coordinator.py  # FieldCoordinator (L2 router)
+│   └── orchestrator.py       # Orchestrator (L3 router)
 └── workflows/
-    ├── recon.py                   # L1: ConcurrentBuilder + facade
-    ├── field.py                   # L2: HandoffBuilder + facade
-    └── operations.py              # L3: HandoffBuilder (top-level)
+    ├── recon.py              # L1: ConcurrentBuilder + facade
+    ├── field.py              # L2: HandoffBuilder + facade
+    └── operations.py         # L3: HandoffBuilder (top-level)
+
+mcp_services/                 # FastMCP 3.1 tool servers
+├── camera_server.py          # get_camera_feed (port 8090)
+├── weather_server.py         # get_weather_report (port 8091)
+├── bms_server.py             # create/update/get case, interactions (port 8093)
+├── schema.sql                # PostgreSQL DDL (cases + interactions)
+├── telemetry.py              # Shared OTel config for MCP servers
+└── requirements.txt
+
+bms_api/                      # BMS REST API (FastAPI)
+├── main.py                   # /api/cases, /stream, /messages, /voice, /metrics
+├── workflow.py               # MAF workflow bridge (singleton, HITL auto-response)
+├── db.py                     # asyncpg connection pool
+├── schemas.py                # Pydantic v2 request/response models
+├── metrics.py                # Prometheus metric definitions
+├── telemetry.py              # OTel + FastAPI auto-instrumentation
+├── config.py                 # DB URL, server settings
+└── requirements.txt
+
+speech_service/               # STT + TTS (faster-whisper + Piper)
+├── main.py                   # /stt, /tts, /health, /metrics
+├── config.py                 # Whisper model, Piper voice path
+├── telemetry.py              # OTel config
+├── models/                   # Piper voice model (es_ES-davefx-medium.onnx)
+└── requirements.txt
+
+frontend/                     # Web interfaces
+├── bms_dashboard/static/     # Command post — cases + live timeline (served at /)
+└── walkie_talkie/static/     # Field operator — push-to-talk voice (served at /walkie)
 ```
 
-### What Is NOT Yet Implemented
+### What Remains (Phase 8 + 9)
 
-| Component | Current State |
+| Component | Status |
 |---|---|
-| MCP Camera Service | Agent generates text from LLM — no MCP server |
-| MCP Weather Service | Agent generates text from LLM — no MCP server |
-| MCP BMS Service | CaseManager hallucinates case IDs — no MCP, no PostgreSQL |
-| BMS REST API | No API exists — runner.py drives workflow directly |
-| BMS Frontend | No dashboard — output is terminal text only |
-| Speech-to-Text | No STT — input is typed text or demo script |
-| Text-to-Speech | No TTS — output is printed text only |
-| Voice UI | No web interface for voice interaction |
-| K8s manifests for new components | Only bms-operations deployment exists |
+| K8s manifests for all services (Dockerfiles, Deployments, Services) | Not created |
+| Monitoring: Tempo, ServiceMonitors, Grafana dashboards | Not deployed |
+| Full E2E live test on K8s cluster | Not done |
+| Demo recording | Not done |
 
 ---
 
@@ -187,7 +221,9 @@ All items completed in previous sessions:
 
 ---
 
-## Phase 1 — MCP Services
+## Phase 1 — MCP Services (COMPLETED)
+
+**Status: ✅ DONE**
 
 **Goal:** Create three MCP tool servers (Camera, Weather, BMS) that
 agents call via the Model Context Protocol. This validates the
@@ -373,9 +409,9 @@ the fallback if MAF's MCP integration doesn't support Ollama well.
 - [x] MCP Weather server runs standalone and responds to tool calls
 - [x] MCP BMS server runs standalone and performs real CRUD on PostgreSQL
 - [x] CameraAgent uses MCP tool (not LLM hallucination) for observations
-- [ ] MeteoAgent uses MCP tool (not LLM hallucination) for weather data
-- [ ] CaseManager uses MCP BMS tools for case persistence (not hallucination)
-- [ ] L1 ConcurrentBuilder still works with MCP-enabled agents
+- [x] MeteoAgent uses MCP tool (not LLM hallucination) for weather data
+- [x] CaseManager uses MCP BMS tools for case persistence (not hallucination)
+- [x] L1 ConcurrentBuilder still works with MCP-enabled agents
 - [x] Demo produces deterministic, reproducible sensor data
 - [x] Cases and interactions are persisted in PostgreSQL after demo run
 - [x] MCP transport is streamable-http (not stdio)
@@ -383,7 +419,9 @@ the fallback if MAF's MCP integration doesn't support Ollama well.
 
 ---
 
-## Phase 2 — BMS Database & API
+## Phase 2 — BMS Database & API (COMPLETED)
+
+**Status: ✅ DONE**
 
 **Goal:** Create the BMS REST API (FastAPI) for operator-facing concerns:
 message ingestion, SSE streaming for the dashboard, and frontend serving.
@@ -513,15 +551,17 @@ async def handle_message(body: OperatorMessage):
 
 ### Acceptance Criteria
 
-- [ ] PostgreSQL schema created in cluster DB
-- [ ] FastAPI app runs and passes health check
-- [ ] Dashboard can read cases and interactions from DB
-- [ ] SSE stream emits live events when MCP BMS writes to DB
-- [ ] `/api/messages` endpoint invokes MAF workflow and returns response
+- [x] PostgreSQL schema created in cluster DB
+- [x] FastAPI app runs and passes health check
+- [x] Dashboard can read cases and interactions from DB
+- [x] SSE stream emits live events when MCP BMS writes to DB
+- [x] `/api/messages` endpoint invokes MAF workflow and returns response
 
 ---
 
-## Phase 3 — Agent Integration
+## Phase 3 — Agent Integration (COMPLETED)
+
+**Status: ✅ DONE**
 
 **Goal:** Wire all agents to their MCP tools — Camera, Weather, and BMS.
 All external system access from agents goes through MCP exclusively.
@@ -581,17 +621,19 @@ Same pattern as Camera but for the Weather MCP service.
 
 ### Acceptance Criteria
 
-- [ ] CaseManager creates real cases in PostgreSQL via MCP BMS tools
-- [ ] CaseManager updates cases (status, priority) via MCP BMS tools
-- [ ] CameraAgent calls MCP Camera for observations (no hallucination)
-- [ ] MeteoAgent calls MCP Weather for conditions (no hallucination)
-- [ ] Full 3-level workflow runs with all real MCP tools connected
-- [ ] Demo scenario produces persistent data in PostgreSQL
-- [ ] All agent-to-external-system communication goes through MCP (zero direct REST/DB calls)
+- [x] CaseManager creates real cases in PostgreSQL via MCP BMS tools
+- [x] CaseManager updates cases (status, priority) via MCP BMS tools
+- [x] CameraAgent calls MCP Camera for observations (no hallucination)
+- [x] MeteoAgent calls MCP Weather for conditions (no hallucination)
+- [x] Full 3-level workflow runs with all real MCP tools connected
+- [x] Demo scenario produces persistent data in PostgreSQL
+- [x] All agent-to-external-system communication goes through MCP (zero direct REST/DB calls)
 
 ---
 
-## Phase 4 — BMS Frontend Dashboard
+## Phase 4 — BMS Frontend Dashboard (COMPLETED)
+
+**Status: ✅ DONE**
 
 **Goal:** Real-time web dashboard showing cases and interactions.
 
@@ -641,14 +683,16 @@ events.addEventListener("case_update", (e) => { updateCaseStatus(JSON.parse(e.da
 
 ### Acceptance Criteria
 
-- [ ] Dashboard loads and shows existing cases
-- [ ] New cases appear in real time when created by agents
-- [ ] Interaction timeline updates live
+- [x] Dashboard loads and shows existing cases
+- [x] New cases appear in real time when created by agents
+- [x] Interaction timeline updates live
 - [ ] Accessible via ingress at `bms.maf.local` (or similar)
 
 ---
 
-## Phase 5 — Speech Layer
+## Phase 5 — Speech Layer (COMPLETED)
+
+**Status: ✅ DONE**
 
 **Goal:** Offline STT and TTS services running on **GPU** (shared via
 time-slicing with Ollama). Language: **Spanish (Spain / es-ES)**.
@@ -741,15 +785,17 @@ claim without conflict.
 
 ### Acceptance Criteria
 
-- [ ] `/stt` endpoint transcribes Spanish audio to text accurately
-- [ ] `/tts` endpoint synthesises Spanish text to natural audio
-- [ ] Both run fully offline (no network calls)
+- [x] `/stt` endpoint transcribes Spanish audio to text accurately
+- [x] `/tts` endpoint synthesises Spanish text to natural audio
+- [x] Both run fully offline (no network calls)
 - [ ] Both use GPU via time-slicing (no CPU fallback needed)
-- [ ] Latency acceptable for conversational use
+- [x] Latency acceptable for conversational use
 
 ---
 
-## Phase 6 — Voice UI
+## Phase 6 — Voice UI (COMPLETED)
+
+**Status: ✅ DONE**
 
 **Goal:** Walkie-talkie web interface for operator voice interaction.
 
@@ -822,11 +868,11 @@ async def handle_voice(audio: UploadFile):
 
 ### Acceptance Criteria
 
-- [ ] Hold button records audio in browser
-- [ ] Release sends audio to backend
-- [ ] Response audio plays automatically
-- [ ] Conversation history displays in real time
-- [ ] Active case ID shown on screen
+- [x] Hold button records audio in browser
+- [x] Release sends audio to backend
+- [x] Response audio plays automatically
+- [x] Conversation history displays in real time
+- [x] Active case ID shown on screen
 - [ ] Works entirely offline (after initial page load)
 
 ---
