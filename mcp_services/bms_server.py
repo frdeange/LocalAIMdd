@@ -20,6 +20,10 @@ import os
 from datetime import datetime, timezone
 from typing import Annotated
 
+from mcp_services.telemetry import configure_telemetry
+
+configure_telemetry("mcp-bms")
+
 import asyncpg
 from fastmcp import FastMCP
 

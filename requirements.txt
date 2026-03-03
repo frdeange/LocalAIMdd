@@ -7,3 +7,7 @@ agent-framework-orchestrations @ git+https://github.com/microsoft/agent-framewor
 
 # ── Configuration ────────────────────────────────────────────
 python-dotenv
+
+# ── Telemetry (OTel → Tempo) ─────────────────────────────────
+# Activates only when OTEL_EXPORTER_OTLP_ENDPOINT is set
+opentelemetry-exporter-otlp-proto-grpc

@@ -13,6 +13,10 @@ import json
 import os
 from typing import Annotated
 
+from mcp_services.telemetry import configure_telemetry
+
+configure_telemetry("mcp-weather")
+
 from fastmcp import FastMCP
 
 mcp = FastMCP(

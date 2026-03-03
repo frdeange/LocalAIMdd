@@ -182,6 +182,8 @@ All items completed in previous sessions:
 - [x] ArgoCD GitOps pipeline
 - [x] Gitea repo with full code push
 - [x] GitHub repo synchronised
+- [x] Cluster reorganised: `shared-services` namespace with Ollama, `maflocal` deleted
+- [x] GPU time-slicing configured (3 replicas per physical GPU)
 
 ---
 
@@ -200,9 +202,45 @@ All MCP servers **MUST** be built with **FastMCP ≥ 3.1**
 | Aspect | Detail |
 |---|---|
 | Framework | FastMCP v3.1+ (`pip install fastmcp`) |
-| Transport | SSE (K8s) or stdio (local dev) |
-| Telemetry | **Built-in** — FastMCP exposes OpenTelemetry traces automatically |
+| Transport | **streamable-http** (for both K8s and local dev) |
+| Telemetry | **Built-in** — FastMCP generates OTel traces; export via `OTEL_EXPORTER_OTLP_ENDPOINT` env var |
 | Python | 3.13 |
+
+### Validated: MAF → MCP Integration Pattern
+
+MAF provides **native MCP client support** via `MCPStreamableHTTPTool`.
+No manual tool wrappers or HTTP client code needed.
+
+```python
+# Validated agent factory pattern (src/agents/camera.py)
+from agent_framework import Agent, MCPStreamableHTTPTool
+from src.config import MCP_CAMERA_URL
+
+def create_camera_agent(client):
+    camera_mcp = MCPStreamableHTTPTool(
+        name="camera_mcp",
+        url=MCP_CAMERA_URL,   # env-driven: http://localhost:8090/mcp
+        description="Surveillance camera system",
+    )
+    return client.as_agent(
+        name="CameraAgent",
+        instructions=CAMERA_INSTRUCTIONS,
+        tools=[camera_mcp],
+    )
+```
+
+> **Key discovery:** `MCPStreamableHTTPTool(name, url)` auto-discovers
+> all tools exposed by the FastMCP server. The agent sees them as
+> callable functions. The LLM decides which to call based on its
+> instructions and the tool descriptions.
+
+### Port Assignments
+
+| MCP Server | Port | Endpoint | Env var (URL) |
+|---|---|---|---|
+| Camera | 8090 | `http://<host>:8090/mcp` | `MCP_CAMERA_URL` |
+| Weather | 8091 | `http://<host>:8091/mcp` | `MCP_WEATHER_URL` |
+| BMS | 8093 | `http://<host>:8093/mcp` | `MCP_BMS_URL` |
 
 ### 1.1 MCP Camera Service
 
@@ -211,7 +249,7 @@ All MCP servers **MUST** be built with **FastMCP ≥ 3.1**
 | Detail | Value |
 |---|---|
 | Framework | **FastMCP ≥ 3.1** |
-| Transport | stdio (for local) or SSE (for K8s) |
+| Transport | **streamable-http** on port 8090 |
 | Tool: `get_camera_feed` | Input: `latitude: float`, `longitude: float`, `zoom_level: int` |
 | Output | JSON: `{ target_description, image_quality, visibility, tactical_notes }` |
 | Behaviour | Deterministic mock — returns pre-defined observations based on coordinate quadrant |
@@ -256,7 +294,7 @@ SECTORS = {
 | Detail | Value |
 |---|---|
 | Framework | **FastMCP ≥ 3.1** |
-| Transport | stdio (for local) or SSE (for K8s) |
+| Transport | **streamable-http** on port 8093 |
 | Database | PostgreSQL (async via `asyncpg`) |
 | Tools | `create_case`, `update_case`, `add_interaction`, `get_case`, `list_cases` |
 
@@ -331,15 +369,17 @@ the fallback if MAF's MCP integration doesn't support Ollama well.
 
 ### Acceptance Criteria
 
-- [ ] MCP Camera server runs standalone and responds to tool calls
-- [ ] MCP Weather server runs standalone and responds to tool calls
-- [ ] MCP BMS server runs standalone and performs real CRUD on PostgreSQL
-- [ ] CameraAgent uses MCP tool (not LLM hallucination) for observations
+- [x] MCP Camera server runs standalone and responds to tool calls
+- [x] MCP Weather server runs standalone and responds to tool calls
+- [x] MCP BMS server runs standalone and performs real CRUD on PostgreSQL
+- [x] CameraAgent uses MCP tool (not LLM hallucination) for observations
 - [ ] MeteoAgent uses MCP tool (not LLM hallucination) for weather data
 - [ ] CaseManager uses MCP BMS tools for case persistence (not hallucination)
 - [ ] L1 ConcurrentBuilder still works with MCP-enabled agents
-- [ ] Demo produces deterministic, reproducible sensor data
-- [ ] Cases and interactions are persisted in PostgreSQL after demo run
+- [x] Demo produces deterministic, reproducible sensor data
+- [x] Cases and interactions are persisted in PostgreSQL after demo run
+- [x] MCP transport is streamable-http (not stdio)
+- [ ] OTel traces export when OTEL_EXPORTER_OTLP_ENDPOINT is set
 
 ---
 
