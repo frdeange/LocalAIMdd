@@ -26,7 +26,7 @@ from bms_api.telemetry import configure_telemetry
 
 configure_telemetry()
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import FastAPI, HTTPException, Request, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
@@ -329,6 +329,59 @@ async def handle_message(body: OperatorMessage):
     )
 
 
+# ── Voice Endpoint ───────────────────────────────────────────
+
+SPEECH_SERVICE_URL = os.getenv("SPEECH_SERVICE_URL", "http://localhost:8092")
+
+
+@app.post("/api/voice")
+async def handle_voice(audio: UploadFile = File(...)):
+    """Process voice message: audio → STT → agent workflow → TTS → audio response.
+
+    1. Send audio to Speech Service /stt → get text
+    2. Process text through /api/messages → get agent response
+    3. Send response to Speech Service /tts → get audio
+    4. Return audio with metadata headers
+    """
+    import httpx
+
+    async with httpx.AsyncClient(timeout=120.0) as http:
+        # 1. STT: audio → text
+        audio_bytes = await audio.read()
+        stt_resp = await http.post(
+            f"{SPEECH_SERVICE_URL}/stt",
+            files={"audio": ("recording.webm", audio_bytes, audio.content_type or "audio/webm")},
+        )
+        if stt_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"STT service error: {stt_resp.text}")
+
+        stt_data = stt_resp.json()
+        operator_text = stt_data["text"]
+
+        # 2. Process through agent workflow
+        msg_result = await handle_message(OperatorMessage(text=operator_text))
+        agent_text = msg_result.response
+
+        # 3. TTS: text → audio
+        tts_resp = await http.post(
+            f"{SPEECH_SERVICE_URL}/tts",
+            json={"text": agent_text},
+        )
+        if tts_resp.status_code != 200:
+            raise HTTPException(status_code=502, detail=f"TTS service error: {tts_resp.text}")
+
+        # 4. Return audio with metadata
+        return Response(
+            content=tts_resp.content,
+            media_type="audio/wav",
+            headers={
+                "X-Operator-Text": operator_text[:200],
+                "X-Agent-Text": agent_text[:200],
+                "Access-Control-Expose-Headers": "X-Operator-Text, X-Agent-Text, X-Case-Id",
+            },
+        )
+
+
 # ── Entry point ──────────────────────────────────────────────
 
 # Serve BMS Dashboard static files
@@ -340,7 +393,16 @@ if _dashboard_dir.exists():
     async def dashboard_index():
         return FileResponse(_dashboard_dir / "index.html")
 
-    app.mount("/static", StaticFiles(directory=str(_dashboard_dir)), name="static")
+    app.mount("/static", StaticFiles(directory=str(_dashboard_dir)), name="dashboard-static")
+
+# Serve Walkie-Talkie static files
+_walkie_dir = Path(__file__).resolve().parent.parent / "frontend" / "walkie_talkie" / "static"
+if _walkie_dir.exists():
+    @app.get("/walkie")
+    async def walkie_index():
+        return FileResponse(_walkie_dir / "index.html")
+
+    app.mount("/walkie", StaticFiles(directory=str(_walkie_dir)), name="walkie-static")
 
 
 def main():

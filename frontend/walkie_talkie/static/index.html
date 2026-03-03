@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>BMS COMMS — Field Operator</title>
+    <link rel="stylesheet" href="/walkie/style.css">
+</head>
+<body>
+    <div class="walkie-container">
+        <!-- Header -->
+        <div class="walkie-header">
+            <div class="callsign">ALPHA-7</div>
+            <div class="channel">BMS OPS — CH 1</div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="status-bar">
+            <div id="connection-dot" class="dot dot-connecting"></div>
+            <span id="status-text">Conectando...</span>
+            <span id="active-case" class="case-badge"></span>
+        </div>
+
+        <!-- Response Display -->
+        <div id="response-area" class="response-area">
+            <div class="empty-msg">Mantenga pulsado para hablar</div>
+        </div>
+
+        <!-- PTT Button -->
+        <div class="ptt-section">
+            <button id="ptt-btn" class="ptt-btn">
+                <div class="ptt-icon">
+                    <svg viewBox="0 0 24 24" fill="currentColor">
+                        <path d="M12 14c1.66 0 3-1.34 3-3V5c0-1.66-1.34-3-3-3S9 3.34 9 5v6c0 1.66 1.34 3 3 3z"/>
+                        <path d="M17 11c0 2.76-2.24 5-5 5s-5-2.24-5-5H5c0 3.53 2.61 6.43 6 6.92V21h2v-3.08c3.39-.49 6-3.39 6-6.92h-2z"/>
+                    </svg>
+                </div>
+                <div id="ptt-label" class="ptt-label">PULSAR PARA HABLAR</div>
+            </button>
+            <div id="ptt-timer" class="ptt-timer"></div>
+        </div>
+
+        <!-- Conversation Log -->
+        <div class="log-section">
+            <div class="log-header">Registro de comunicaciones</div>
+            <div id="conv-log" class="conv-log">
+                <!-- Populated by JS -->
+            </div>
+        </div>
+    </div>
+
+    <script src="/walkie/app.js"></script>
+</body>
+</html>

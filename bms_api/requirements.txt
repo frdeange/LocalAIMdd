@@ -1,8 +1,10 @@
 fastapi
 uvicorn
 asyncpg
+httpx
 sse-starlette
 pydantic>=2.0
 prometheus-client
+python-multipart
 opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-instrumentation-fastapi
