@@ -1,0 +1,7 @@
+fastapi
+uvicorn
+asyncpg
+sse-starlette
+pydantic>=2.0
+opentelemetry-exporter-otlp-proto-grpc
+opentelemetry-instrumentation-fastapi
