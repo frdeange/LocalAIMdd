@@ -485,14 +485,19 @@ FastAPI (auto-instrumented) ──┘
 
 ### 11.3 What Gets Monitored
 
-| Layer | Metrics | Traces |
-|---|---|---|
-| **MAF Agents** | — | Handoff chain, tool calls, LLM latency |
-| **MCP Services** | Tool call count, error rate | Per-tool invocation spans (FastMCP built-in) |
-| **BMS API** | HTTP request rate/latency/errors | Request → workflow → response spans |
-| **Speech Service** | STT/TTS latency histograms | Per-transcription and per-synthesis spans |
-| **Ollama** | Inference latency, token throughput | (via Ollama metrics endpoint) |
-| **PostgreSQL** | Connection pool, query latency | (via prometheus postgres-exporter) |
+**Every component** in the system must be monitored. No blind spots.
+
+| Layer | Metrics (Prometheus) | Traces (Tempo) | How |
+|---|---|---|---|
+| **MAF Agents** | — | Handoff chain, tool calls, LLM latency | MAF built-in OTel spans |
+| **MCP Services** | Tool call count, error rate | Per-tool invocation spans | FastMCP built-in telemetry |
+| **BMS API** | HTTP request rate/latency/errors | Request → workflow → response | `opentelemetry-instrumentation-fastapi` |
+| **Speech Service** | STT/TTS latency histograms, error rate | Per-transcription / per-synthesis spans | Custom OTel spans + Prometheus metrics |
+| **Frontend (Web)** | Page load time, JS errors, WebSocket health | — | Prometheus client-side metrics via `/metrics` endpoint |
+| **Ollama** | Inference latency, tokens/s, model info | — | Ollama native `/metrics` endpoint (Prometheus format) |
+| **PostgreSQL** | Connections, query latency, rows, locks, disk | — | `prometheus-postgres-exporter` sidecar |
+| **GPU** | VRAM usage, GPU utilisation, temperature | — | `dcgm-exporter` (NVIDIA DCGM) |
+| **Kubernetes** | Pod/node/container resources, restarts | — | kube-prometheus-stack (pre-existing) |
 
 ### 11.4 Agent Tracing Example
 
@@ -515,8 +520,14 @@ BMS API: POST /api/messages
 
 - **ServiceMonitors** per Python service (auto-discovered by Prometheus)
 - **PodMonitors** where ServiceMonitors are not applicable
-- Custom **Grafana dashboards** for BMS operational view
-- All services expose `/metrics` (Prometheus format)
+- **dcgm-exporter** DaemonSet for GPU metrics (VRAM, utilisation, temp)
+- **postgres-exporter** sidecar for PostgreSQL metrics
+- Custom **Grafana dashboards**:
+  - BMS Operations: agent routing, case lifecycle, handoff counts
+  - Infrastructure: Ollama inference, GPU stats, PostgreSQL health
+  - Speech: STT/TTS latency, error rate, model load times
+- All Python services expose `/metrics` (Prometheus format)
+- All Python services export traces via OTLP (gRPC) to Tempo
 
 ---
 

@@ -884,9 +884,15 @@ k8s/
 │   ├── speech-service.yaml  # STT + TTS (GPU)
 │   └── ingress.yaml         # bms.maf.local → bms-api
 ├── monitoring/              # Observability resources
-│   ├── tempo.yaml           # Grafana Tempo deployment + service
+│   ├── tempo.yaml           # Grafana Tempo deployment + service + datasource
+│   ├── dcgm-exporter.yaml   # NVIDIA GPU metrics (VRAM, utilisation, temp)
+│   ├── postgres-exporter.yaml # PostgreSQL metrics sidecar
+│   ├── ollama-servicemonitor.yaml # Scrape Ollama /metrics
 │   ├── servicemonitors.yaml # Per-service Prometheus scrape configs
 │   └── dashboards/          # Grafana dashboard ConfigMaps
+│       ├── bms-operations.json  # Agent routing, cases, handoffs
+│       ├── infrastructure.json  # Ollama, GPU, PostgreSQL health
+│       └── speech.json          # STT/TTS latency and errors
 └── argocd-app.yaml          # GitOps application (path: k8s/bms-ops)
 ```
 
@@ -921,17 +927,20 @@ k8s/
 ### 8.5 Deployment Steps
 
 1. Deploy Grafana Tempo to `monitoring` namespace
-2. Add Tempo as Grafana datasource
-3. Build and push all images to Nexus
-4. Create DB, schema, and user in PostgreSQL
-5. Create K8s secrets (DB credentials, registry pull secret)
-6. Apply K8s manifests (or push to Gitea for ArgoCD)
-7. Apply ServiceMonitors for each Python service
-8. Import Grafana dashboards
-9. Verify all pods running
-10. Create ingress for `bms.maf.local`
-11. End-to-end smoke test from browser
-12. Verify traces appear in Grafana → Tempo
+2. Deploy dcgm-exporter (GPU metrics) to `monitoring` namespace
+3. Deploy postgres-exporter sidecar in `db` namespace
+4. Add Tempo as Grafana datasource
+5. Build and push all images to Nexus
+6. Create DB, schema, and user in PostgreSQL
+7. Create K8s secrets (DB credentials, registry pull secret)
+8. Apply K8s manifests (or push to Gitea for ArgoCD)
+9. Apply ServiceMonitors for each Python service + Ollama
+10. Import Grafana dashboards (operations, infrastructure, speech)
+11. Verify all pods running
+12. Create ingress for `bms.maf.local`
+13. End-to-end smoke test from browser
+14. Verify traces appear in Grafana → Tempo
+15. Verify GPU metrics appear in Grafana → Prometheus
 
 ### Acceptance Criteria
 
