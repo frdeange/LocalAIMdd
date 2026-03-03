@@ -19,7 +19,7 @@ import json
 import logging
 import os
 from contextlib import asynccontextmanager
-from datetime import datetime, timezone
+from pathlib import Path
 
 # ── Telemetry (must be before FastAPI import for proper instrumentation) ──
 from bms_api.telemetry import configure_telemetry
@@ -269,6 +269,18 @@ async def handle_message(body: OperatorMessage):
 
 
 # ── Entry point ──────────────────────────────────────────────
+
+# Serve BMS Dashboard static files
+_dashboard_dir = Path(__file__).resolve().parent.parent / "frontend" / "bms_dashboard" / "static"
+if _dashboard_dir.exists():
+    from starlette.responses import FileResponse
+
+    @app.get("/")
+    async def dashboard_index():
+        return FileResponse(_dashboard_dir / "index.html")
+
+    app.mount("/static", StaticFiles(directory=str(_dashboard_dir)), name="static")
+
 
 def main():
     import uvicorn

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>BMS Operations — Command Post</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <h1>BMS OPERATIONS</h1>
+            <span class="subtitle">Command Post Dashboard</span>
+        </div>
+        <div class="header-right">
+            <span id="connection-status" class="status-badge status-connecting">CONNECTING</span>
+            <span id="case-count" class="case-counter">0 cases</span>
+        </div>
+    </header>
+
+    <main>
+        <!-- Case List Panel -->
+        <section class="panel case-list-panel">
+            <h2>Active Cases</h2>
+            <div class="filter-bar">
+                <button class="filter-btn active" data-filter="">All</button>
+                <button class="filter-btn" data-filter="OPEN">Open</button>
+                <button class="filter-btn" data-filter="IN_PROGRESS">In Progress</button>
+                <button class="filter-btn" data-filter="CLOSED">Closed</button>
+            </div>
+            <div id="case-list" class="case-list">
+                <!-- Cases populated by JS -->
+                <div class="empty-state">Loading cases...</div>
+            </div>
+        </section>
+
+        <!-- Case Detail Panel -->
+        <section class="panel case-detail-panel">
+            <div id="case-detail" class="case-detail">
+                <div class="empty-state">Select a case to view details</div>
+            </div>
+        </section>
+
+        <!-- Live Activity Feed -->
+        <section class="panel activity-panel">
+            <h2>Live Activity Feed</h2>
+            <div id="activity-feed" class="activity-feed">
+                <div class="empty-state">Waiting for agent activity...</div>
+            </div>
+        </section>
+    </main>
+
+    <script src="/static/app.js"></script>
+</body>
+</html>
