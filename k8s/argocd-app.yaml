@@ -1,0 +1,23 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bms-operations
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: bms-operations
+spec:
+  project: default
+  source:
+    # Mirror this GitHub repo to Gitea, then point here
+    repoURL: https://gitea.maf.local/kiko/LocalAIMdd.git
+    targetRevision: main
+    path: k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: bms-ops
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

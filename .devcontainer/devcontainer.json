@@ -8,26 +8,23 @@
 	},
 	"features": {
 		"ghcr.io/devcontainers/features/azure-cli:1": {},
-		"ghcr.io/devcontainers/features/docker-in-docker:2": {
+		"ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
 			"dockerDashComposeVersion": "v2"
 		},
 		"ghcr.io/devcontainers/features/node:1": {}
 	},
 
-	// Ports: Frontend (3000), API (8000), MCP (8090), Ollama (11434),
-	// PostgreSQL (5432), Aspire Dashboard (18888)
-	"forwardPorts": [3000, 8000, 8090, 11434, 5432, 18888],
+	// Ports: Ollama (11434), API (8000) — others will be added later
+	"forwardPorts": [11434, 8000],
 
-	// Install Python + Node dependencies after container creation
-	"postCreateCommand": "pip install -r requirements.txt && cd frontend && npm install && cd ..",
+	// Install Python dependencies after container creation
+	"postCreateCommand": "pip install --upgrade pip && pip install -r requirements.txt",
 
 	"customizations": {
 		"vscode": {
 			"extensions": [
 				"ms-python.python",
-				"ms-python.pylint",
-				"dbaeumer.vscode-eslint",
-				"bradlc.vscode-tailwindcss"
+				"ms-python.pylint"
 			]
 		}
 	}

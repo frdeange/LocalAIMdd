@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: bms-operations
+  namespace: bms-ops
+  labels:
+    app.kubernetes.io/name: bms-operations
+    app.kubernetes.io/part-of: bms-operations
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: bms-operations
+  template:
+    metadata:
+      labels:
+        app: bms-operations
+    spec:
+      containers:
+        - name: bms
+          image: docker.maf.local/bms-ops/bms-operations:latest
+          imagePullPolicy: Always
+          envFrom:
+            - configMapRef:
+                name: bms-config
+          resources:
+            requests:
+              cpu: "500m"
+              memory: "512Mi"
+            limits:
+              cpu: "2"
+              memory: "1Gi"
+      # Pull from Nexus private registry
+      imagePullSecrets:
+        - name: nexus-registry-secret
+      restartPolicy: Always

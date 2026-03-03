@@ -1,20 +1,9 @@
 # ── Microsoft Agent Framework (MAF) ──────────────────────────
+# Core + orchestrations + Ollama provider
 agent-framework-core[all] @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python/packages/core
 agent-framework @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python
 agent-framework-ollama @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python/packages/ollama
 agent-framework-orchestrations @ git+https://github.com/microsoft/agent-framework.git@main#subdirectory=python/packages/orchestrations
 
-# ── MCP ──────────────────────────────────────────────────────
-fastmcp==3.0.0
-
-# ── Telemetry ────────────────────────────────────────────────
-opentelemetry-api
-opentelemetry-sdk
-opentelemetry-exporter-otlp-proto-grpc
-
 # ── Configuration ────────────────────────────────────────────
 python-dotenv
-
-# ── Testing ──────────────────────────────────────────────────
-pytest
-pytest-asyncio

@@ -1,12 +1,17 @@
-# Copyright (c) Microsoft. All rights reserved.
-"""Agent definitions for the Travel Planner orchestration."""
+"""Leaf agent factory functions for BMS Operations."""
 
-from .researcher import create_researcher_agent
-from .weather_analyst import create_weather_analyst_agent
-from .planner import create_planner_agent
+from src.agents.camera import create_camera_agent
+from src.agents.meteo import create_meteo_agent
+from src.agents.vehicle import create_vehicle_agent
+from src.agents.case_manager import create_case_manager
+from src.agents.field_coordinator import create_field_coordinator
+from src.agents.orchestrator import create_orchestrator
 
 __all__ = [
-    "create_researcher_agent",
-    "create_weather_analyst_agent",
-    "create_planner_agent",
+    "create_camera_agent",
+    "create_meteo_agent",
+    "create_vehicle_agent",
+    "create_case_manager",
+    "create_field_coordinator",
+    "create_orchestrator",
 ]
