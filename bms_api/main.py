@@ -26,13 +26,25 @@ from bms_api.telemetry import configure_telemetry
 
 configure_telemetry()
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from sse_starlette.sse import EventSourceResponse
 
 from bms_api.config import API_HOST, API_PORT
 from bms_api.db import get_pool, close_pool
+from bms_api.metrics import (
+    api_requests_total,
+    api_request_duration,
+    sse_active_connections,
+    frontend_page_loads,
+    frontend_errors,
+    frontend_sse_reconnects,
+    frontend_page_load_duration,
+    generate_latest,
+    CONTENT_TYPE_LATEST,
+)
 from bms_api.schemas import (
     CaseDetail,
     CaseListResponse,
@@ -89,6 +101,53 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+# ── Request metrics middleware ────────────────────────────────
+
+@app.middleware("http")
+async def metrics_middleware(request: Request, call_next):
+    """Track request count and duration for Prometheus."""
+    import time
+    endpoint = request.url.path
+    method = request.method
+    start = time.perf_counter()
+    response = await call_next(request)
+    duration = time.perf_counter() - start
+    # Skip /metrics and /static to avoid noise
+    if not endpoint.startswith(("/metrics", "/static")):
+        api_requests_total.labels(method=method, endpoint=endpoint, status_code=response.status_code).inc()
+        api_request_duration.labels(method=method, endpoint=endpoint).observe(duration)
+    return response
+
+
+# ── Prometheus Metrics ────────────────────────────────────────
+
+@app.get("/metrics")
+async def prometheus_metrics():
+    """Prometheus metrics endpoint."""
+    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
+
+
+# ── Frontend Metrics Ingestion ────────────────────────────────
+
+@app.post("/api/frontend-metrics")
+async def receive_frontend_metrics(request: Request):
+    """Receive telemetry events from the dashboard JS client."""
+    data = await request.json()
+    event_type = data.get("event", "")
+
+    if event_type == "page_load":
+        frontend_page_loads.inc()
+        duration = data.get("duration", 0)
+        if duration > 0:
+            frontend_page_load_duration.observe(duration / 1000)  # ms → s
+    elif event_type == "error":
+        frontend_errors.labels(type=data.get("type", "unknown")).inc()
+    elif event_type == "sse_reconnect":
+        frontend_sse_reconnects.inc()
+
+    return {"status": "ok"}
 
 
 # ── Health ────────────────────────────────────────────────────
@@ -175,6 +234,7 @@ async def stream():
 
     async def event_generator():
         try:
+            sse_active_connections.inc()
             # Send initial ping
             yield {"event": "connected", "data": json.dumps({"status": "ok"})}
             while True:
@@ -184,6 +244,7 @@ async def stream():
             pass
         finally:
             _sse_subscribers.remove(queue)
+            sse_active_connections.dec()
 
     return EventSourceResponse(event_generator())
 

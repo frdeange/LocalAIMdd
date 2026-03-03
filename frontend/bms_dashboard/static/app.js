@@ -159,6 +159,7 @@ function connectSSE() {
         connectionStatusEl.textContent = "DISCONNECTED";
         connectionStatusEl.className = "status-badge status-disconnected";
         source.close();
+        sendMetric("sse_reconnect");
         // Reconnect after 3 seconds
         setTimeout(connectSSE, 3000);
     };
@@ -204,3 +205,41 @@ function escapeHtml(str) {
 
 fetchCases();
 connectSSE();
+initTelemetry();
+
+
+// ── Frontend Telemetry ───────────────────────────────
+
+function sendMetric(event, data = {}) {
+    fetch(`${API_BASE}/api/frontend-metrics`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ event, ...data }),
+    }).catch(() => {}); // fire-and-forget
+}
+
+function initTelemetry() {
+    // Page load timing
+    window.addEventListener("load", () => {
+        const duration = performance.now();
+        sendMetric("page_load", { duration: Math.round(duration) });
+    });
+
+    // Global JS error tracking
+    window.addEventListener("error", (e) => {
+        sendMetric("error", {
+            type: "js_error",
+            message: e.message,
+            source: e.filename,
+            line: e.lineno,
+        });
+    });
+
+    // Unhandled promise rejection tracking
+    window.addEventListener("unhandledrejection", (e) => {
+        sendMetric("error", {
+            type: "promise_rejection",
+            message: String(e.reason),
+        });
+    });
+}

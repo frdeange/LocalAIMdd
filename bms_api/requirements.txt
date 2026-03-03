@@ -3,5 +3,6 @@ uvicorn
 asyncpg
 sse-starlette
 pydantic>=2.0
+prometheus-client
 opentelemetry-exporter-otlp-proto-grpc
 opentelemetry-instrumentation-fastapi
