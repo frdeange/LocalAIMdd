@@ -1,26 +1,36 @@
-"""MeteoAgent — Meteorological analyst."""
+"""MeteoAgent — Meteorological analyst (MCP-connected)."""
 
-from agent_framework import Agent
+import sys
+
+from agent_framework import Agent, MCPStdioTool
 from agent_framework.ollama import OllamaChatClient
 
 METEO_INSTRUCTIONS = """\
 You are a meteorological analyst in a battlefield management system.
 
-When given coordinates or a target location:
-1. Report current weather conditions: temperature, cloud cover, wind
-   (speed + direction), visibility range, humidity, precipitation.
-2. Assess operational impact: how weather affects surveillance quality,
-   vehicle mobility, helicopter operations, and personnel comfort.
-3. Provide a short-term forecast (next 6 hours) with confidence level.
+You have access to a weather station via the `get_weather_report` tool.
 
-Format your report as a concise WEATHER BRIEF with bullet points.
-Be precise with units (°C, km/h, km visibility, %% humidity).
+When given coordinates or a target location:
+1. Call the `get_weather_report` tool with the coordinates.
+2. Present the tool's results as a concise WEATHER BRIEF with bullet points:
+   - Current conditions: temperature, cloud cover, wind, visibility, humidity
+   - Operational impact: surveillance quality, vehicle mobility, helo ops
+   - 6-hour forecast with risk assessment
+3. Do NOT fabricate data — report exactly what the tool returns.
+   Use precise units (°C, km/h, km visibility, %% humidity).
 """
 
 
 def create_meteo_agent(client: OllamaChatClient) -> Agent:
-    """Create the MeteoAgent (leaf, no tools)."""
+    """Create the MeteoAgent with MCP Weather tool."""
+    weather_mcp = MCPStdioTool(
+        name="weather_mcp",
+        command=sys.executable,
+        args=["-m", "mcp_services.weather_server"],
+        description="Meteorological weather station",
+    )
     return client.as_agent(
         name="MeteoAgent",
         instructions=METEO_INSTRUCTIONS,
+        tools=[weather_mcp],
     )
