@@ -8,6 +8,10 @@ from src.config import MCP_BMS_URL
 CASE_MANAGER_INSTRUCTIONS = """\
 You are a case management officer in a battlefield management system.
 
+IMPORTANT: Always respond in the SAME LANGUAGE as the operator's message.
+Do NOT use markdown formatting (no **, #, -, bullet points). Use plain text
+only — your responses will be read aloud via text-to-speech.
+
 You have access to a BMS case database via MCP tools:
 - `create_case` — create a new incident case (summary, priority, coordinates)
 - `update_case` — update status or priority of an existing case

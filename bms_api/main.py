@@ -57,6 +57,23 @@ from bms_api.schemas import (
 logger = logging.getLogger(__name__)
 
 
+# ── Markdown stripping for TTS ────────────────────────────────
+
+import re
+
+def _strip_markdown(text: str) -> str:
+    """Remove markdown formatting so TTS reads clean text."""
+    text = re.sub(r'#{1,6}\s*', '', text)           # Headers
+    text = re.sub(r'\*{1,3}([^*]+)\*{1,3}', r'\1', text)  # Bold/italic
+    text = re.sub(r'`{1,3}[^`]*`{1,3}', '', text)  # Code blocks
+    text = re.sub(r'^\s*[-*+]\s+', '', text, flags=re.MULTILINE)  # Bullet points
+    text = re.sub(r'^\s*\d+\.\s+', '', text, flags=re.MULTILINE)  # Numbered lists
+    text = re.sub(r'\[([^\]]+)\]\([^)]+\)', r'\1', text)  # Links
+    text = re.sub(r'---+', '', text)                # Horizontal rules
+    text = re.sub(r'\n{3,}', '\n\n', text)          # Excess newlines
+    return text.strip()
+
+
 # ── SSE broadcast channel ────────────────────────────────────
 # Simple in-memory pub/sub for SSE. In production, use Redis pub/sub.
 _sse_subscribers: list[asyncio.Queue] = []
@@ -362,10 +379,16 @@ async def handle_voice(audio: UploadFile = File(...)):
         msg_result = await handle_message(OperatorMessage(text=operator_text))
         agent_text = msg_result.response
 
-        # 3. TTS: text → audio
+        # 3. Strip markdown for TTS (safety net) and truncate for voice
+        agent_text_clean = _strip_markdown(agent_text)
+        # Limit TTS to ~500 chars to keep voice response reasonable
+        if len(agent_text_clean) > 500:
+            agent_text_clean = agent_text_clean[:500] + "... Fin del informe."
+
+        # 4. TTS: text → audio
         tts_resp = await http.post(
             f"{SPEECH_SERVICE_URL}/tts",
-            json={"text": agent_text},
+            json={"text": agent_text_clean},
         )
         if tts_resp.status_code != 200:
             raise HTTPException(status_code=502, detail=f"TTS service error: {tts_resp.text}")

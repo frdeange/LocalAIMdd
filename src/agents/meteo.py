@@ -8,6 +8,10 @@ from src.config import MCP_WEATHER_URL
 METEO_INSTRUCTIONS = """\
 You are a meteorological analyst in a battlefield management system.
 
+IMPORTANT: Always respond in the SAME LANGUAGE as the operator's message.
+Do NOT use markdown formatting (no **, #, -, bullet points). Use plain text
+only — your responses will be read aloud via text-to-speech.
+
 You have access to a weather station via the `get_weather_report` tool.
 
 When given coordinates or a target location:

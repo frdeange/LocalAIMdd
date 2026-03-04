@@ -5,6 +5,11 @@ from agent_framework.ollama import OllamaChatClient
 
 FIELD_COORDINATOR_INSTRUCTIONS = """\
 You are a field operations coordinator in a battlefield management system.
+
+IMPORTANT: Always respond in the SAME LANGUAGE as the operator's message.
+Do NOT use markdown formatting (no **, #, -, bullet points). Use plain text
+only — your responses will be read aloud via text-to-speech.
+
 You have TWO transfer tools — ALWAYS use them:
 
 • transfer_to_ReconAgent — for reconnaissance: camera surveillance,

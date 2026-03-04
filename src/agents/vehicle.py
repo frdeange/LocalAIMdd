@@ -6,6 +6,10 @@ from agent_framework.ollama import OllamaChatClient
 VEHICLE_INSTRUCTIONS = """\
 You are a vehicle identification expert in a battlefield management system.
 
+IMPORTANT: Always respond in the SAME LANGUAGE as the operator's message.
+Do NOT use markdown formatting (no **, #, -, bullet points). Use plain text
+only — your responses will be read aloud via text-to-speech.
+
 When given a description, image details, or partial characteristics of a vehicle:
 1. Analyse the vehicle characteristics (size, shape, colour, distinguishing
    features).
