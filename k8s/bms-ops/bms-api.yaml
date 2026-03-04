@@ -18,7 +18,7 @@ spec:
     spec:
       containers:
         - name: bms-api
-          image: docker.maf.local/bms-ops/bms-api:ead8f976
+          image: docker.maf.local/bms-ops/bms-api:2c349d5c
           imagePullPolicy: Always
           ports:
             - name: http
