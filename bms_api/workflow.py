@@ -219,31 +219,7 @@ async def run_agent_workflow(operator_text: str) -> str:
                                 key = f"{getattr(msg, 'author_name', '')}:{msg.text[:100]}"
                                 if key not in seen:
                                     seen.add(key)
-                                    agent_texts.append(msg.text)            elif isinstance(data, list):
-                # Conversation snapshot
-                for item in data:
-                    if hasattr(item, 'text') and item.text:
-                        print(f"[WORKFLOW] Conv [{getattr(item, 'author_name', '?')}]: {item.text[:150]}", flush=True)
-                        if not _is_noise(item.text):
-                            key = f"{getattr(item, 'author_name', '')}:{item.text[:100]}"
-                            if key not in seen:
-                                seen.add(key)
-                                agent_texts.append(item.text)
-            else:
-                print(f"[WORKFLOW] Unknown output: {str(data)[:200]}", flush=True)
-        
-        # Also check HITL requests for agent messages
-        for req_event in requests:
-            req = req_event.data if hasattr(req_event, 'data') else req_event
-            if hasattr(req, 'agent_response') and req.agent_response:
-                for message in req.agent_response.messages:
-                    if hasattr(message, 'text') and message.text:
-                        print(f"[WORKFLOW] HITL agent [{getattr(message, 'author_name', '?')}]: {message.text[:150]}", flush=True)
-                        if not _is_noise(message.text):
-                            key = f"{getattr(message, 'author_name', '')}:{message.text[:100]}"
-                            if key not in seen:
-                                seen.add(key)
-                                agent_texts.append(message.text)
+                                    agent_texts.append(msg.text)
 
     except Exception as e:
         print(f"[WORKFLOW] Error: {e}", flush=True)
