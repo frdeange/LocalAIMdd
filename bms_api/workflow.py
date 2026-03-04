@@ -152,10 +152,20 @@ async def run_agent_workflow(operator_text: str) -> str:
         # Extract text from outputs
         for output in outputs:
             data = output.data if hasattr(output, 'data') else output
-            print(f"[WORKFLOW] Output type: {type(data).__name__}", flush=True)
+            print(f"[WORKFLOW] Output type: {type(data).__name__} dir={[a for a in dir(data) if not a.startswith('_') and a != 'model_fields']}", flush=True)
             
-            if isinstance(data, AgentResponse):
-                for message in data.messages:
+            if isinstance(data, AgentResponse) or type(data).__name__ == 'AgentResponse':
+                msgs = getattr(data, 'messages', [])
+                print(f"[WORKFLOW] AgentResponse messages={len(msgs)}", flush=True)
+                if not msgs:
+                    # Try other attributes
+                    for attr in ['text', 'content', 'value']:
+                        val = getattr(data, attr, None)
+                        if val:
+                            print(f"[WORKFLOW] AgentResponse.{attr} = {str(val)[:200]}", flush=True)
+                            if not _is_noise(str(val)):
+                                agent_texts.append(str(val))
+                for message in msgs:
                     if hasattr(message, 'text') and message.text:
                         print(f"[WORKFLOW] Agent [{getattr(message, 'author_name', '?')}]: {message.text[:150]}", flush=True)
                         if not _is_noise(message.text):
