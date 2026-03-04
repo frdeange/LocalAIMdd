@@ -91,10 +91,11 @@ _field_workflow: Any = None
 
 # Auto-responses injected when the inner HandoffBuilder asks for "user" input.
 # This lets the L2 workflow run autonomously without a real human.
+# These are in Spanish and instruct agents to respond concisely without markdown.
 _AUTO_RESPONSES = [
-    "Proceed with the assessment. Use all available specialists and compile a full report.",
-    "Continue. Compile all findings from specialists into a final summary.",
-    "Wrap up and provide the complete report.",
+    "Proceda con la evaluación. Use todos los especialistas disponibles. Responda en español, sin formato markdown, de forma concisa.",
+    "Continúe. Compile todos los hallazgos en un resumen breve en español. Sin asteriscos ni formato markdown.",
+    "Finalice y proporcione el informe completo en español, texto plano, máximo 5 líneas.",
 ]
 
 
@@ -153,21 +154,16 @@ def create_field_specialist_facade(client: OllamaChatClient) -> Agent:
     field_specialist = client.as_agent(
         name="FieldSpecialist",
         instructions=(
-            "You are a field specialist coordinator. You have TWO tools:\n\n"
-            "1. ``run_field_operations`` — runs recon (camera + weather) and "
-            "vehicle ID. Call this with the full task description.\n"
-            "2. ``transfer_to_Orchestrator`` — hands control back.\n\n"
-            "STRICT WORKFLOW (follow every time):\n"
-            "Step 1: Call ``run_field_operations`` with ALL details.\n"
-            "Step 2: Summarise the results in 3-5 lines.\n"
-            "Step 3: IMMEDIATELY call ``transfer_to_Orchestrator``.\n\n"
-            "CRITICAL RULES:\n"
-            "- After reporting results, ALWAYS transfer back. No exceptions.\n"
-            "- If the user asks something unrelated to field ops (e.g. "
-            "'create case', 'case status'), call ``transfer_to_Orchestrator`` "
-            "immediately WITHOUT calling run_field_operations.\n"
-            "- NEVER answer more than ONE round without transferring back.\n"
-            "- NEVER fabricate data."
+            "You are a field specialist coordinator.\n\n"
+            "IMPORTANT: Always respond in the SAME LANGUAGE as the request. "
+            "Do NOT use markdown formatting (no **, #, -). Plain text only.\n\n"
+            "You have the ``run_field_operations`` tool that runs recon "
+            "(camera + weather) and vehicle ID.\n\n"
+            "Call ``run_field_operations`` with ALL details from the request. "
+            "Then summarise the results in 3-5 concise lines.\n\n"
+            "If no coordinates are provided in the request, state that "
+            "coordinates are needed before reconnaissance can proceed. "
+            "NEVER invent coordinates."
         ),
         tools=[run_field_operations],
     )

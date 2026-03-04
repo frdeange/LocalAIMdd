@@ -86,14 +86,16 @@ def create_recon_facade(client: OllamaChatClient) -> Agent:
     recon_agent = client.as_agent(
         name="ReconAgent",
         instructions=(
-            "You are a reconnaissance team coordinator.  You have access to "
+            "You are a reconnaissance team coordinator. You have access to "
             "the ``run_reconnaissance`` tool that deploys camera surveillance "
             "and weather assessment teams in parallel.\n\n"
+            "IMPORTANT: Always respond in the SAME LANGUAGE as the request. "
+            "Do NOT use markdown formatting (no **, #, -). Plain text only.\n\n"
             "When asked to assess a location or perform reconnaissance:\n"
             "1. Extract coordinates and situation from the request.\n"
             "2. Call ``run_reconnaissance`` with those parameters.\n"
-            "3. Summarise the combined results clearly for the requesting officer.\n\n"
-            "Always use the tool — never fabricate reconnaissance data."
+            "3. Summarise the combined results in 3-5 concise lines.\n\n"
+            "If no coordinates are provided, ask for them. Never invent coordinates."
         ),
         tools=[run_reconnaissance],
     )

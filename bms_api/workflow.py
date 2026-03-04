@@ -122,7 +122,13 @@ async def _handle_field(operator_text: str) -> str:
         if cleaned:
             clean_lines.append(cleaned)
 
-    return "\n".join(clean_lines) if clean_lines else result
+    text = "\n".join(clean_lines) if clean_lines else result
+    
+    # Truncate for voice — max 800 chars
+    if len(text) > 800:
+        text = text[:800] + "\n\nFin del informe."
+    
+    return text
 
 
 async def _handle_case(operator_text: str) -> str:
