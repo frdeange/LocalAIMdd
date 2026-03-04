@@ -184,10 +184,20 @@ async def text_to_speech(body: TTSRequest):
 
     try:
         voice = _get_piper()
+        sample_rate = voice.config.sample_rate
 
+        # Synthesize raw audio samples
+        audio_bytes = b""
+        for chunk in voice.synthesize(body.text):
+            audio_bytes += chunk.audio_int16_bytes
+
+        # Build WAV file manually
         buf = io.BytesIO()
         wav_file = wave.open(buf, "wb")
-        voice.synthesize_wav(body.text, wav_file)
+        wav_file.setnchannels(1)
+        wav_file.setsampwidth(2)  # 16-bit
+        wav_file.setframerate(sample_rate)
+        wav_file.writeframes(audio_bytes)
         wav_file.close()
 
         elapsed = time.perf_counter() - start
