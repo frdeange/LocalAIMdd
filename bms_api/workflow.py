@@ -142,6 +142,15 @@ async def run_agent_workflow(operator_text: str) -> str:
         
         # result is the final AgentResponse or a list of events
         print(f"[WORKFLOW] Result type: {type(result).__name__}", flush=True)
+        print(f"[WORKFLOW] Result dir: {[a for a in dir(result) if not a.startswith('_')]}", flush=True)
+        
+        # Try to get all possible attributes
+        for attr in ['text', 'value', 'content', 'messages', 'user_input_requests', 
+                      'agent_response', 'outputs', 'result', 'data', 'response']:
+            if hasattr(result, attr):
+                val = getattr(result, attr)
+                if val is not None:
+                    print(f"[WORKFLOW] result.{attr} = {type(val).__name__}: {str(val)[:200]}", flush=True)
         
         # Extract text from the result
         if hasattr(result, 'text') and result.text:

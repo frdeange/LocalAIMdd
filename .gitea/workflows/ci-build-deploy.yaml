@@ -1,0 +1,232 @@
+# ── BMS Operations — CI/CD Pipeline ──────────────────────────
+# Triggers on push to main (skips CI-generated commits).
+#
+# Flow:
+#   1. Detect which services have source-code changes
+#   2. Build changed Docker images in parallel (tagged with git SHA)
+#   3. Push images to Nexus registry (docker.maf.local)
+#   4. Single commit updates ALL K8s manifests with new tags
+#   5. ArgoCD detects manifest change → auto-sync → rollout
+#
+# The [skip ci] marker in the commit message prevents infinite loops.
+# ─────────────────────────────────────────────────────────────
+name: CI — Build & Deploy
+
+on:
+  push:
+    branches: [main]
+
+env:
+  REGISTRY: docker.maf.local
+  IMAGE_PREFIX: bms-ops
+
+jobs:
+  # ─────────────────────────────────────────────────────────
+  # 1. Detect which services have changed source files
+  # ─────────────────────────────────────────────────────────
+  changes:
+    runs-on: ubuntu-latest
+    # Skip CI commits to avoid infinite loop
+    if: "!contains(github.event.head_commit.message, '[skip ci]')"
+    outputs:
+      bms-api: ${{ steps.filter.outputs.bms-api }}
+      mcp-bms: ${{ steps.filter.outputs.mcp-bms }}
+      mcp-camera: ${{ steps.filter.outputs.mcp-camera }}
+      mcp-weather: ${{ steps.filter.outputs.mcp-weather }}
+      speech-service: ${{ steps.filter.outputs.speech-service }}
+      any-changed: ${{ steps.filter.outputs.any-changed }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Detect changed paths
+        id: filter
+        run: |
+          CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || echo "")
+          echo "── Changed files ──"
+          echo "$CHANGED"
+          echo ""
+
+          ANY="false"
+
+          # bms-api depends on: bms_api/, src/, frontend/, root requirements.txt
+          if echo "$CHANGED" | grep -qE '^(bms_api/|src/|frontend/|requirements\.txt)'; then
+            echo "bms-api=true" >> "$GITHUB_OUTPUT"; ANY="true"
+          else
+            echo "bms-api=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # mcp-bms
+          if echo "$CHANGED" | grep -qE '^mcp_services/(bms_server|Dockerfile\.bms|requirements|__init__|telemetry)'; then
+            echo "mcp-bms=true" >> "$GITHUB_OUTPUT"; ANY="true"
+          else
+            echo "mcp-bms=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # mcp-camera
+          if echo "$CHANGED" | grep -qE '^mcp_services/(camera_server|Dockerfile\.camera|requirements|__init__|telemetry)'; then
+            echo "mcp-camera=true" >> "$GITHUB_OUTPUT"; ANY="true"
+          else
+            echo "mcp-camera=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # mcp-weather
+          if echo "$CHANGED" | grep -qE '^mcp_services/(weather_server|Dockerfile\.weather|requirements|__init__|telemetry)'; then
+            echo "mcp-weather=true" >> "$GITHUB_OUTPUT"; ANY="true"
+          else
+            echo "mcp-weather=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          # speech-service
+          if echo "$CHANGED" | grep -qE '^speech_service/'; then
+            echo "speech-service=true" >> "$GITHUB_OUTPUT"; ANY="true"
+          else
+            echo "speech-service=false" >> "$GITHUB_OUTPUT"
+          fi
+
+          echo "any-changed=${ANY}" >> "$GITHUB_OUTPUT"
+
+  # ─────────────────────────────────────────────────────────
+  # 2. Build & Push — one job per service, run in parallel
+  # ─────────────────────────────────────────────────────────
+  build-bms-api:
+    needs: changes
+    if: needs.changes.outputs.bms-api == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & push bms-api
+        run: |
+          TAG="${GITHUB_SHA::8}"
+          IMAGE="${REGISTRY}/${IMAGE_PREFIX}/bms-api"
+          echo "▸ Building ${IMAGE}:${TAG}"
+          docker build -f bms_api/Dockerfile -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+
+  build-mcp-bms:
+    needs: changes
+    if: needs.changes.outputs.mcp-bms == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & push mcp-bms
+        run: |
+          TAG="${GITHUB_SHA::8}"
+          IMAGE="${REGISTRY}/${IMAGE_PREFIX}/mcp-bms"
+          echo "▸ Building ${IMAGE}:${TAG}"
+          docker build -f mcp_services/Dockerfile.bms -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+
+  build-mcp-camera:
+    needs: changes
+    if: needs.changes.outputs.mcp-camera == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & push mcp-camera
+        run: |
+          TAG="${GITHUB_SHA::8}"
+          IMAGE="${REGISTRY}/${IMAGE_PREFIX}/mcp-camera"
+          echo "▸ Building ${IMAGE}:${TAG}"
+          docker build -f mcp_services/Dockerfile.camera -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+
+  build-mcp-weather:
+    needs: changes
+    if: needs.changes.outputs.mcp-weather == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & push mcp-weather
+        run: |
+          TAG="${GITHUB_SHA::8}"
+          IMAGE="${REGISTRY}/${IMAGE_PREFIX}/mcp-weather"
+          echo "▸ Building ${IMAGE}:${TAG}"
+          docker build -f mcp_services/Dockerfile.weather -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+
+  build-speech-service:
+    needs: changes
+    if: needs.changes.outputs.speech-service == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build & push speech-service
+        run: |
+          TAG="${GITHUB_SHA::8}"
+          IMAGE="${REGISTRY}/${IMAGE_PREFIX}/speech-service"
+          echo "▸ Building ${IMAGE}:${TAG}"
+          docker build -f speech_service/Dockerfile -t "${IMAGE}:${TAG}" -t "${IMAGE}:latest" .
+          docker push "${IMAGE}:${TAG}"
+          docker push "${IMAGE}:latest"
+
+  # ─────────────────────────────────────────────────────────
+  # 3. Update K8s manifests — single atomic commit
+  #    Runs AFTER all builds complete. Updates image tags in
+  #    YAML so ArgoCD detects the change and auto-syncs.
+  # ─────────────────────────────────────────────────────────
+  update-manifests:
+    needs:
+      - changes
+      - build-bms-api
+      - build-mcp-bms
+      - build-mcp-camera
+      - build-mcp-weather
+      - build-speech-service
+    # Run even if some builds were skipped (not all services change every push)
+    if: always() && needs.changes.outputs.any-changed == 'true' && needs.changes.result == 'success'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 1
+
+      - name: Update image tags in manifests
+        run: |
+          TAG="${GITHUB_SHA::8}"
+          SERVICES_UPDATED=""
+
+          if [[ "${{ needs.changes.outputs.bms-api }}" == "true" && "${{ needs.build-bms-api.result }}" == "success" ]]; then
+            sed -i "s|image: ${REGISTRY}/${IMAGE_PREFIX}/bms-api:.*|image: ${REGISTRY}/${IMAGE_PREFIX}/bms-api:${TAG}|" k8s/bms-ops/bms-api.yaml
+            SERVICES_UPDATED="${SERVICES_UPDATED} bms-api"
+          fi
+
+          if [[ "${{ needs.changes.outputs.mcp-bms }}" == "true" && "${{ needs.build-mcp-bms.result }}" == "success" ]]; then
+            sed -i "s|image: ${REGISTRY}/${IMAGE_PREFIX}/mcp-bms:.*|image: ${REGISTRY}/${IMAGE_PREFIX}/mcp-bms:${TAG}|" k8s/bms-ops/mcp-bms.yaml
+            SERVICES_UPDATED="${SERVICES_UPDATED} mcp-bms"
+          fi
+
+          if [[ "${{ needs.changes.outputs.mcp-camera }}" == "true" && "${{ needs.build-mcp-camera.result }}" == "success" ]]; then
+            sed -i "s|image: ${REGISTRY}/${IMAGE_PREFIX}/mcp-camera:.*|image: ${REGISTRY}/${IMAGE_PREFIX}/mcp-camera:${TAG}|" k8s/bms-ops/mcp-camera.yaml
+            SERVICES_UPDATED="${SERVICES_UPDATED} mcp-camera"
+          fi
+
+          if [[ "${{ needs.changes.outputs.mcp-weather }}" == "true" && "${{ needs.build-mcp-weather.result }}" == "success" ]]; then
+            sed -i "s|image: ${REGISTRY}/${IMAGE_PREFIX}/mcp-weather:.*|image: ${REGISTRY}/${IMAGE_PREFIX}/mcp-weather:${TAG}|" k8s/bms-ops/mcp-weather.yaml
+            SERVICES_UPDATED="${SERVICES_UPDATED} mcp-weather"
+          fi
+
+          if [[ "${{ needs.changes.outputs.speech-service }}" == "true" && "${{ needs.build-speech-service.result }}" == "success" ]]; then
+            sed -i "s|image: ${REGISTRY}/${IMAGE_PREFIX}/speech-service:.*|image: ${REGISTRY}/${IMAGE_PREFIX}/speech-service:${TAG}|" k8s/bms-ops/speech-service.yaml
+            SERVICES_UPDATED="${SERVICES_UPDATED} speech-service"
+          fi
+
+          echo "SERVICES_UPDATED=${SERVICES_UPDATED}" >> "$GITHUB_ENV"
+          echo "── Updated services:${SERVICES_UPDATED} → ${TAG} ──"
+
+      - name: Commit & push manifest changes
+        run: |
+          TAG="${GITHUB_SHA::8}"
+          git config user.name "gitea-ci"
+          git config user.email "ci@maf.local"
+          git add k8s/bms-ops/*.yaml
+          git diff --cached --quiet && echo "No manifest changes" && exit 0
+          git commit -m "ci: update images → ${TAG} [skip ci]
+
+          Services updated:${SERVICES_UPDATED}"
+          git push
