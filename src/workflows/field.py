@@ -154,16 +154,11 @@ def create_field_specialist_facade(client: OllamaChatClient) -> Agent:
     field_specialist = client.as_agent(
         name="FieldSpecialist",
         instructions=(
-            "You are a field specialist coordinator.\n\n"
-            "IMPORTANT: Always respond in the SAME LANGUAGE as the request. "
-            "Do NOT use markdown formatting (no **, #, -). Plain text only.\n\n"
-            "You have the ``run_field_operations`` tool that runs recon "
-            "(camera + weather) and vehicle ID.\n\n"
-            "Call ``run_field_operations`` with ALL details from the request. "
-            "Then summarise the results in 3-5 concise lines.\n\n"
-            "If no coordinates are provided in the request, state that "
-            "coordinates are needed before reconnaissance can proceed. "
-            "NEVER invent coordinates."
+            "You are a field operations specialist. "
+            "When you receive a task with coordinates, use your tool to execute field operations. "
+            "When coordinates are missing, ask for them. "
+            "Always respond in the same language as the user. "
+            "Use plain text, no markdown."
         ),
         tools=[run_field_operations],
     )
