@@ -345,7 +345,7 @@ async def handle_voice(audio: UploadFile = File(...)):
     """
     import httpx
 
-    async with httpx.AsyncClient(timeout=120.0) as http:
+    async with httpx.AsyncClient(timeout=300.0) as http:
         # 1. STT: audio → text
         audio_bytes = await audio.read()
         stt_resp = await http.post(
@@ -370,13 +370,14 @@ async def handle_voice(audio: UploadFile = File(...)):
         if tts_resp.status_code != 200:
             raise HTTPException(status_code=502, detail=f"TTS service error: {tts_resp.text}")
 
-        # 4. Return audio with metadata
+        # 4. Return audio with metadata (URL-encode to handle Spanish accents)
+        from urllib.parse import quote
         return Response(
             content=tts_resp.content,
             media_type="audio/wav",
             headers={
-                "X-Operator-Text": operator_text[:200],
-                "X-Agent-Text": agent_text[:200],
+                "X-Operator-Text": quote(operator_text[:200]),
+                "X-Agent-Text": quote(agent_text[:200]),
                 "Access-Control-Expose-Headers": "X-Operator-Text, X-Agent-Text, X-Case-Id",
             },
         )

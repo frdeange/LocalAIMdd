@@ -124,8 +124,8 @@ async function handleRecordingComplete(audioBlob) {
         if (contentType.includes("audio/")) {
             // Direct audio response
             const audioData = await response.arrayBuffer();
-            const operatorText = response.headers.get("X-Operator-Text") || "(audio sent)";
-            const agentText = response.headers.get("X-Agent-Text") || "(agent responded)";
+            const operatorText = decodeURIComponent(response.headers.get("X-Operator-Text") || "(audio sent)");
+            const agentText = decodeURIComponent(response.headers.get("X-Agent-Text") || "(agent responded)");
             const caseId = response.headers.get("X-Case-Id") || "";
 
             addLogEntry("operator", operatorText);
