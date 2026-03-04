@@ -1,14 +1,15 @@
 apiVersion: argoproj.io/v1alpha1
 kind: Application
 metadata:
-  name: bms-operations
+  name: bms-ops
   namespace: argocd
   labels:
-    app.kubernetes.io/part-of: bms-operations
+    app.kubernetes.io/part-of: bms-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
 spec:
   project: default
   source:
-    # Mirror this GitHub repo to Gitea, then point here
     repoURL: https://gitea.maf.local/kiko/LocalAIMdd.git
     targetRevision: main
     path: k8s/bms-ops
@@ -21,3 +22,10 @@ spec:
       selfHeal: true
     syncOptions:
       - CreateNamespace=true
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m

@@ -1,0 +1,36 @@
+# ── App of Apps ─────────────────────────────────────────────
+# This is the ROOT application that ArgoCD manages.
+# It points to k8s/argocd/ which contains the child Application
+# manifests (bms-ops, bms-monitoring, bms-shared-services).
+# ArgoCD will recursively discover and sync all children.
+# ────────────────────────────────────────────────────────────
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bms-platform
+  namespace: argocd
+  labels:
+    app.kubernetes.io/part-of: bms-platform
+  finalizers:
+    - resources-finalizer.argocd.argoproj.io
+spec:
+  project: default
+  source:
+    repoURL: https://gitea.maf.local/kiko/LocalAIMdd.git
+    targetRevision: main
+    path: k8s/argocd
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: argocd
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - ApplyOutOfSyncOnly=true
+    retry:
+      limit: 3
+      backoff:
+        duration: 10s
+        factor: 2
+        maxDuration: 3m
