@@ -173,7 +173,53 @@ async def run_agent_workflow(operator_text: str) -> str:
                             if key not in seen:
                                 seen.add(key)
                                 agent_texts.append(message.text)
-            elif isinstance(data, list):
+        # ── HITL auto-response loop ──────────────────────────────
+        # If the workflow paused for HITL (Orchestrator waiting for
+        # operator confirmation before executing handoff), respond
+        # automatically so the agents can continue working.
+        hitl_rounds = 0
+        while requests and hitl_rounds < 5 and not agent_texts:
+            hitl_rounds += 1
+            print(f"[WORKFLOW] HITL round {hitl_rounds}: responding to {len(requests)} requests", flush=True)
+            
+            responses = {}
+            for req_event in requests:
+                req = req_event.data if hasattr(req_event, 'data') else req_event
+                responses[req.request_id] = HandoffAgentUserRequest.create_response(
+                    "Recibido. Proceda con el análisis completo."
+                )
+            
+            result = await workflow.run(responses=responses)
+            print(f"[WORKFLOW] HITL round {hitl_rounds} result type: {type(result).__name__}", flush=True)
+            
+            # Extract outputs from this round
+            outputs = result.get_outputs() if hasattr(result, 'get_outputs') else []
+            requests = result.get_request_info_events() if hasattr(result, 'get_request_info_events') else []
+            print(f"[WORKFLOW] Round {hitl_rounds}: {len(outputs)} outputs, {len(requests)} HITL requests", flush=True)
+            
+            for output in outputs:
+                data = output.data if hasattr(output, 'data') else output
+                if hasattr(data, 'messages'):
+                    for message in data.messages:
+                        if hasattr(message, 'text') and message.text:
+                            print(f"[WORKFLOW] R{hitl_rounds} [{getattr(message, 'author_name', '?')}]: {message.text[:150]}", flush=True)
+                            if not _is_noise(message.text):
+                                key = f"{getattr(message, 'author_name', '')}:{message.text[:100]}"
+                                if key not in seen:
+                                    seen.add(key)
+                                    agent_texts.append(message.text)
+
+            for req_event in requests:
+                req = req_event.data if hasattr(req_event, 'data') else req_event
+                if hasattr(req, 'agent_response') and req.agent_response:
+                    for msg in req.agent_response.messages:
+                        if hasattr(msg, 'text') and msg.text:
+                            print(f"[WORKFLOW] R{hitl_rounds} HITL [{getattr(msg, 'author_name', '?')}]: {msg.text[:150]}", flush=True)
+                            if not _is_noise(msg.text):
+                                key = f"{getattr(msg, 'author_name', '')}:{msg.text[:100]}"
+                                if key not in seen:
+                                    seen.add(key)
+                                    agent_texts.append(msg.text)            elif isinstance(data, list):
                 # Conversation snapshot
                 for item in data:
                     if hasattr(item, 'text') and item.text:
