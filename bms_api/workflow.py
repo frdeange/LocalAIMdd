@@ -142,49 +142,52 @@ async def run_agent_workflow(operator_text: str) -> str:
         
         # result is the final AgentResponse or a list of events
         print(f"[WORKFLOW] Result type: {type(result).__name__}", flush=True)
-        print(f"[WORKFLOW] Result dir: {[a for a in dir(result) if not a.startswith('_')]}", flush=True)
         
-        # Try to get all possible attributes
-        for attr in ['text', 'value', 'content', 'messages', 'user_input_requests', 
-                      'agent_response', 'outputs', 'result', 'data', 'response']:
-            if hasattr(result, attr):
-                val = getattr(result, attr)
-                if val is not None:
-                    print(f"[WORKFLOW] result.{attr} = {type(val).__name__}: {str(val)[:200]}", flush=True)
+        # WorkflowRunResult is a list with get_outputs() and get_request_info_events()
+        outputs = result.get_outputs() if hasattr(result, 'get_outputs') else []
+        requests = result.get_request_info_events() if hasattr(result, 'get_request_info_events') else []
         
-        # Extract text from the result
-        if hasattr(result, 'text') and result.text:
-            text = result.text
-            print(f"[WORKFLOW] Direct text: {text[:200]}", flush=True)
-            if not _is_noise(text):
-                agent_texts.append(text)
+        print(f"[WORKFLOW] Outputs: {len(outputs)}, HITL requests: {len(requests)}", flush=True)
         
-        if hasattr(result, 'messages'):
-            for message in result.messages:
-                if hasattr(message, 'text') and message.text:
-                    print(f"[WORKFLOW] Message [{getattr(message, 'author_name', '?')}]: {message.text[:120]}", flush=True)
-                    key = f"{getattr(message, 'author_name', '')}:{message.text[:100]}"
-                    if key not in seen and not _is_noise(message.text):
-                        seen.add(key)
-                        agent_texts.append(message.text)
-
-        # If result has user_input_requests (HITL), auto-respond
-        if hasattr(result, 'user_input_requests') and result.user_input_requests:
-            print(f"[WORKFLOW] {len(result.user_input_requests)} HITL requests", flush=True)
-            for req in result.user_input_requests:
-                # Get the agent message from the request
-                if hasattr(req, 'agent_response') and req.agent_response:
-                    if hasattr(req.agent_response, 'text') and req.agent_response.text:
-                        text = req.agent_response.text
-                        if not _is_noise(text):
-                            agent_texts.append(text)
-                    if hasattr(req.agent_response, 'messages'):
-                        for msg in req.agent_response.messages:
-                            if hasattr(msg, 'text') and msg.text and not _is_noise(msg.text):
-                                key = f"{getattr(msg, 'author_name', '')}:{msg.text[:100]}"
-                                if key not in seen:
-                                    seen.add(key)
-                                    agent_texts.append(msg.text)
+        # Extract text from outputs
+        for output in outputs:
+            data = output.data if hasattr(output, 'data') else output
+            print(f"[WORKFLOW] Output type: {type(data).__name__}", flush=True)
+            
+            if isinstance(data, AgentResponse):
+                for message in data.messages:
+                    if hasattr(message, 'text') and message.text:
+                        print(f"[WORKFLOW] Agent [{getattr(message, 'author_name', '?')}]: {message.text[:150]}", flush=True)
+                        if not _is_noise(message.text):
+                            key = f"{getattr(message, 'author_name', '')}:{message.text[:100]}"
+                            if key not in seen:
+                                seen.add(key)
+                                agent_texts.append(message.text)
+            elif isinstance(data, list):
+                # Conversation snapshot
+                for item in data:
+                    if hasattr(item, 'text') and item.text:
+                        print(f"[WORKFLOW] Conv [{getattr(item, 'author_name', '?')}]: {item.text[:150]}", flush=True)
+                        if not _is_noise(item.text):
+                            key = f"{getattr(item, 'author_name', '')}:{item.text[:100]}"
+                            if key not in seen:
+                                seen.add(key)
+                                agent_texts.append(item.text)
+            else:
+                print(f"[WORKFLOW] Unknown output: {str(data)[:200]}", flush=True)
+        
+        # Also check HITL requests for agent messages
+        for req_event in requests:
+            req = req_event.data if hasattr(req_event, 'data') else req_event
+            if hasattr(req, 'agent_response') and req.agent_response:
+                for message in req.agent_response.messages:
+                    if hasattr(message, 'text') and message.text:
+                        print(f"[WORKFLOW] HITL agent [{getattr(message, 'author_name', '?')}]: {message.text[:150]}", flush=True)
+                        if not _is_noise(message.text):
+                            key = f"{getattr(message, 'author_name', '')}:{message.text[:100]}"
+                            if key not in seen:
+                                seen.add(key)
+                                agent_texts.append(message.text)
 
     except Exception as e:
         print(f"[WORKFLOW] Error: {e}", flush=True)
