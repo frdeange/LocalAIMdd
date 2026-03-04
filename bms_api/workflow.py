@@ -1,20 +1,27 @@
 """
 BMS API — MAF Workflow Integration
 ====================================
-Bridges the FastAPI /api/messages endpoint to the MAF 3-level
-nested workflow (Orchestrator → CaseManager / FieldSpecialist).
+Bridges the FastAPI /api/messages endpoint to the MAF agents.
 
-Replicates the exact event-processing pattern from src/runner.py
-which is proven to work.
+Strategy: Instead of using the L3 HandoffBuilder (which requires
+tool-calling for routing and fails with qwen2.5:7b generating text
+instead of tool calls), we call the agents directly:
+
+- Field operations (recon, weather, vehicle) → run_field_operations()
+  This function handles the L2 HandoffBuilder + L1 ConcurrentBuilder
+  internally with auto-HITL responses (proven to work).
+
+- Case management → CaseManager agent directly
+
+The routing decision (which agent to call) is done with simple keyword
+matching on the operator text, bypassing the unreliable LLM routing.
 """
 
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
-
-from agent_framework import AgentResponse
-from agent_framework.orchestrations import HandoffAgentUserRequest
 
 logger = logging.getLogger(__name__)
 
@@ -31,129 +38,106 @@ def _get_client():
     return _client
 
 
-def _build_workflow():
-    """Fresh workflow per request (HandoffBuilder is stateful)."""
-    from src.workflows.operations import build_operations_workflow
-    return build_operations_workflow(_get_client())
+# ── Field operations (L2 + L1 workflows) ─────────────────────
+
+_field_initialized = False
 
 
-# ── Event processing (mirrors runner.py process_events) ──────
+def _ensure_field_initialized():
+    """Initialize the field operations workflow (L2 + L1)."""
+    global _field_initialized
+    if not _field_initialized:
+        from src.workflows.field import create_field_specialist_facade
+        create_field_specialist_facade(_get_client())
+        _field_initialized = True
+        print("[WF] Field operations initialized (L2+L1)", flush=True)
 
-def _process_events(events: list[Any]) -> tuple[list[str], list[Any]]:
-    """Extract agent texts and pending HITL requests from workflow events.
-    
-    Returns (agent_texts, pending_hitl_events).
-    pending_hitl_events are the RAW WorkflowEvent objects (have .request_id).
-    """
-    texts: list[str] = []
-    pending: list[Any] = []
-    seen: set[str] = set()
 
-    for event in events:
-        if event.type == "output":
-            data = event.data
-            if isinstance(data, AgentResponse):
-                for message in data.messages:
-                    if not message.text:
-                        continue
-                    key = f"{message.author_name}:{message.text[:80]}"
-                    if key in seen:
-                        continue
-                    seen.add(key)
-                    texts.append(message.text)
-                    print(f"[WF] Agent [{message.author_name}]: {message.text[:120]}", flush=True)
+# ── Case management agent ────────────────────────────────────
 
-        elif event.type == "request_info" and isinstance(event.data, HandoffAgentUserRequest):
-            # Extract text from the agent response that accompanies the HITL request
-            if event.data.agent_response:
-                for message in event.data.agent_response.messages:
-                    if message.text:
-                        key = f"{message.author_name}:{message.text[:80]}"
-                        if key in seen:
-                            continue
-                        seen.add(key)
-                        texts.append(message.text)
-                        print(f"[WF] HITL [{message.author_name}]: {message.text[:120]}", flush=True)
-            # Keep the RAW EVENT (has .request_id)
-            pending.append(event)
-            print(f"[WF] HITL request pending (id={event.request_id})", flush=True)
+_case_manager = None
 
-    return texts, pending
+
+def _get_case_manager():
+    global _case_manager
+    if _case_manager is None:
+        from src.agents.case_manager import create_case_manager
+        _case_manager = create_case_manager(_get_client())
+        print("[WF] CaseManager initialized", flush=True)
+    return _case_manager
+
+
+# ── Simple intent routing ────────────────────────────────────
+
+CASE_KEYWORDS = re.compile(
+    r'caso|case|crear caso|create case|cerrar|close|prioridad|priority|'
+    r'estado del caso|case status|incidente|incident',
+    re.IGNORECASE,
+)
+
+
+def _route_intent(text: str) -> str:
+    """Route: 'case' for case management, 'field' for everything else."""
+    if CASE_KEYWORDS.search(text):
+        return "case"
+    return "field"
 
 
 # ── Run workflow ─────────────────────────────────────────────
 
 async def run_agent_workflow(operator_text: str) -> str:
-    """Send operator text through the MAF workflow and return agent response.
-    
-    Pattern copied from runner.py run_demo():
-    1. workflow.run(text, stream=True) → collect events
-    2. Process events → get texts + HITL requests
-    3. Auto-respond to HITL with operator text → continue workflow
-    4. Repeat until no more HITL requests
-    5. Return last agent text
-    """
-    workflow = _build_workflow()
-    print(f"[WF] Starting: {operator_text[:100]}", flush=True)
-
-    all_texts: list[str] = []
+    """Send operator text through the appropriate agent(s)."""
+    intent = _route_intent(operator_text)
+    print(f"[WF] Intent: {intent} | Text: {operator_text[:100]}", flush=True)
 
     try:
-        # Step 1: Initial run (streaming, like runner.py)
-        result = workflow.run(operator_text, stream=True)
-        events = [event async for event in result]
-        print(f"[WF] Initial: {len(events)} events", flush=True)
-
-        texts, pending = _process_events(events)
-        all_texts.extend(texts)
-
-        # Step 2: Auto-respond to HITL requests (max 5 rounds)
-        round_num = 0
-        while pending and round_num < 5:
-            round_num += 1
-            print(f"[WF] HITL round {round_num}: {len(pending)} requests", flush=True)
-
-            # Build responses dict: event.request_id → response
-            # Use the original operator text as the response (like demo scenario)
-            responses = {
-                req_event.request_id: HandoffAgentUserRequest.create_response(operator_text)
-                for req_event in pending
-            }
-
-            # Continue workflow (non-streaming, like runner.py)
-            events = await workflow.run(responses=responses)
-            print(f"[WF] Round {round_num}: {len(events)} events", flush=True)
-
-            texts, pending = _process_events(events)
-            all_texts.extend(texts)
-
-        # Terminate any remaining
-        if pending:
-            print(f"[WF] Terminating {len(pending)} remaining requests", flush=True)
-            responses = {
-                req_event.request_id: HandoffAgentUserRequest.terminate()
-                for req_event in pending
-            }
-            events = await workflow.run(responses=responses)
-            texts, _ = _process_events(events)
-            all_texts.extend(texts)
-
+        if intent == "case":
+            return await _handle_case(operator_text)
+        else:
+            return await _handle_field(operator_text)
     except Exception as e:
         print(f"[WF] Error: {e}", flush=True)
         logger.error("Workflow error: %s", e, exc_info=True)
         return f"Error procesando la solicitud: {e}"
 
-    if not all_texts:
-        print("[WF] No texts collected!", flush=True)
-        return "No se recibió respuesta de los agentes. Intente de nuevo."
 
-    # Filter out noise (handoff function names)
-    real_texts = [t for t in all_texts if len(t) > 30 and "_to_" not in t]
-    
-    if real_texts:
-        print(f"[WF] Returning ({len(real_texts)} real texts, using last)", flush=True)
-        return real_texts[-1]
-    
-    # Fallback: return last text even if short
-    print(f"[WF] Returning fallback ({len(all_texts)} texts, using last)", flush=True)
-    return all_texts[-1]
+async def _handle_field(operator_text: str) -> str:
+    """Run field operations (recon + weather + vehicle ID)."""
+    _ensure_field_initialized()
+
+    from src.workflows.field import run_field_operations
+    print("[WF] Calling run_field_operations...", flush=True)
+
+    result = await run_field_operations(operator_text)
+    print(f"[WF] Field result ({len(result)} chars): {result[:200]}", flush=True)
+
+    if not result or "ERROR" in result:
+        return "No se pudo completar la operacion de campo. Intente de nuevo."
+
+    # Clean up — remove speaker tags like [CameraAgent]:
+    lines = result.split("\n")
+    clean_lines = []
+    for line in lines:
+        cleaned = re.sub(r'^\[[\w]+\]:\s*', '', line.strip())
+        if cleaned:
+            clean_lines.append(cleaned)
+
+    return "\n".join(clean_lines) if clean_lines else result
+
+
+async def _handle_case(operator_text: str) -> str:
+    """Run case management via CaseManager agent."""
+    agent = _get_case_manager()
+    print("[WF] Calling CaseManager agent...", flush=True)
+
+    response = await agent.run(operator_text)
+    text = response.text if hasattr(response, 'text') and response.text else None
+
+    if not text and hasattr(response, 'messages'):
+        for msg in response.messages:
+            if hasattr(msg, 'text') and msg.text:
+                text = msg.text
+                break
+
+    print(f"[WF] Case result: {text[:200] if text else 'No response'}", flush=True)
+    return text or "No se recibio respuesta del gestor de casos."
