@@ -19,28 +19,29 @@ from agent_framework.orchestrations import HandoffAgentUserRequest
 
 logger = logging.getLogger(__name__)
 
-# ── Workflow singleton ────────────────────────────────────────
+# ── Workflow (built fresh per request) ────────────────────────
 
-_workflow: Any = None
-_workflow_lock = asyncio.Lock()
+_client = None
 
 
-async def _get_workflow() -> Any:
-    """Get or build the MAF workflow (singleton)."""
-    global _workflow
-    if _workflow is None:
-        async with _workflow_lock:
-            if _workflow is None:
-                # Import here to avoid circular imports and to
-                # let telemetry configure first
-                from src.client import get_client
-                from src.workflows.operations import build_operations_workflow
+def _get_client():
+    """Get or create the Ollama client (reusable)."""
+    global _client
+    if _client is None:
+        from src.client import get_client
+        _client = get_client()
+    return _client
 
-                logger.info("Building MAF 3-level workflow...")
-                client = get_client()
-                _workflow = build_operations_workflow(client)
-                logger.info("MAF workflow ready")
-    return _workflow
+
+def _build_workflow():
+    """Build a fresh MAF workflow for each request.
+    
+    HandoffBuilder workflows are STATEFUL — they cannot be reused
+    across requests. Each operator message needs a fresh workflow.
+    """
+    from src.workflows.operations import build_operations_workflow
+    client = _get_client()
+    return build_operations_workflow(client)
 
 
 # ── Run workflow for a single message ─────────────────────────
@@ -57,7 +58,8 @@ async def run_agent_workflow(operator_text: str) -> str:
 
     Returns the agent's response text.
     """
-    workflow = await _get_workflow()
+    workflow = _build_workflow()
+    logger.info("Fresh workflow built for operator message")
 
     agent_texts: list[str] = []
     seen: set[str] = set()
