@@ -50,9 +50,10 @@ async def run_agent_workflow(operator_text: str) -> str:
 
     Handles the HITL loop automatically:
     - First message starts the workflow
-    - If the workflow pauses for HITL, we auto-respond with the
-      operator text (single-turn for API mode)
-    - Collects all agent text outputs and returns them joined
+    - If the workflow pauses for HITL (agent waiting for operator),
+      we auto-respond to let the agents continue working
+    - Collects all agent text outputs, filters out handoff noise
+    - Returns the last substantive agent response
 
     Returns the agent's response text.
     """
@@ -60,6 +61,21 @@ async def run_agent_workflow(operator_text: str) -> str:
 
     agent_texts: list[str] = []
     seen: set[str] = set()
+
+    # Patterns to filter out (handoff function names, not real responses)
+    NOISE_PATTERNS = [
+        "transfer_to_",
+        "handoff",
+        "HANDOFF",
+    ]
+
+    def _is_noise(text: str) -> bool:
+        """Check if text is a handoff routing message, not a real response."""
+        stripped = text.strip()
+        return (
+            len(stripped) < 5
+            or any(p in stripped for p in NOISE_PATTERNS)
+        )
 
     def _collect_texts(events: list[Any]) -> list[Any]:
         """Extract agent text and HITL requests from events."""
@@ -75,7 +91,8 @@ async def run_agent_workflow(operator_text: str) -> str:
                         if key in seen:
                             continue
                         seen.add(key)
-                        agent_texts.append(message.text)
+                        if not _is_noise(message.text):
+                            agent_texts.append(message.text)
 
             elif event.type == "request_info" and isinstance(
                 event.data, HandoffAgentUserRequest
@@ -88,7 +105,8 @@ async def run_agent_workflow(operator_text: str) -> str:
                             if key in seen:
                                 continue
                             seen.add(key)
-                            agent_texts.append(message.text)
+                            if not _is_noise(message.text):
+                                agent_texts.append(message.text)
                 pending.append(event)
         return pending
 
@@ -98,15 +116,17 @@ async def run_agent_workflow(operator_text: str) -> str:
         events = [event async for event in result]
         pending = _collect_texts(events)
 
-        # Auto-respond to HITL requests (max 3 rounds)
+        # Auto-respond to HITL requests (max 5 rounds to let agents complete)
         rounds = 0
-        while pending and rounds < 3:
+        while pending and rounds < 5:
             rounds += 1
-            logger.debug("HITL round %d: %d pending requests", rounds, len(pending))
+            logger.info("HITL round %d: %d pending requests — auto-continuing", rounds, len(pending))
 
-            # Terminate all pending requests (single-turn API mode)
+            # Send "continue" response so agents keep working
             responses = {
-                req.request_id: HandoffAgentUserRequest.terminate()
+                req.request_id: HandoffAgentUserRequest.create_response(
+                    "Recibido. Continúe con el análisis y proporcione su informe completo."
+                )
                 for req in pending
             }
             result = await workflow.run(responses=responses)
