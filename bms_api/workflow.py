@@ -4,13 +4,12 @@ BMS API — MAF Workflow Integration
 Bridges the FastAPI /api/messages endpoint to the MAF 3-level
 nested workflow (Orchestrator → CaseManager / FieldSpecialist).
 
-The workflow is built once and reused across requests.
-HITL requests at L3 are auto-responded to continue the flow.
+Replicates the exact event-processing pattern from src/runner.py
+which is proven to work.
 """
 
 from __future__ import annotations
 
-import asyncio
 import logging
 from typing import Any
 
@@ -19,13 +18,12 @@ from agent_framework.orchestrations import HandoffAgentUserRequest
 
 logger = logging.getLogger(__name__)
 
-# ── Workflow (built fresh per request) ────────────────────────
+# ── Client (reusable) ────────────────────────────────────────
 
 _client = None
 
 
 def _get_client():
-    """Get or create the Ollama client (reusable)."""
     global _client
     if _client is None:
         from src.client import get_client
@@ -34,202 +32,128 @@ def _get_client():
 
 
 def _build_workflow():
-    """Build a fresh MAF workflow for each request.
-    
-    HandoffBuilder workflows are STATEFUL — they cannot be reused
-    across requests. Each operator message needs a fresh workflow.
-    """
+    """Fresh workflow per request (HandoffBuilder is stateful)."""
     from src.workflows.operations import build_operations_workflow
-    client = _get_client()
-    return build_operations_workflow(client)
+    return build_operations_workflow(_get_client())
 
 
-# ── Run workflow for a single message ─────────────────────────
+# ── Event processing (mirrors runner.py process_events) ──────
 
-async def run_agent_workflow(operator_text: str) -> str:
-    """Send operator text through the MAF workflow and return agent response.
-
-    Handles the HITL loop automatically:
-    - First message starts the workflow
-    - If the workflow pauses for HITL (agent waiting for operator),
-      we auto-respond to let the agents continue working
-    - Collects all agent text outputs, filters out handoff noise
-    - Returns the last substantive agent response
-
-    Returns the agent's response text.
+def _process_events(events: list[Any]) -> tuple[list[str], list[Any]]:
+    """Extract agent texts and pending HITL requests from workflow events.
+    
+    Returns (agent_texts, pending_hitl_events).
+    pending_hitl_events are the RAW WorkflowEvent objects (have .request_id).
     """
-    workflow = _build_workflow()
-    logger.info("Fresh workflow built for operator message")
-
-    agent_texts: list[str] = []
+    texts: list[str] = []
+    pending: list[Any] = []
     seen: set[str] = set()
 
-    # Patterns to filter out (handoff function names, not real responses)
-    NOISE_PATTERNS = [
-        "transfer_to_",
-        "_to_",           # catches garbled versions like "brtc_to_"
-        "handoff",
-        "HANDOFF",
-        "FieldSpecialist",
-        "CaseManager",
-        "ReconAgent",
-        "VehicleExpert",
-        "Coordinator",
-    ]
+    for event in events:
+        if event.type == "output":
+            data = event.data
+            if isinstance(data, AgentResponse):
+                for message in data.messages:
+                    if not message.text:
+                        continue
+                    key = f"{message.author_name}:{message.text[:80]}"
+                    if key in seen:
+                        continue
+                    seen.add(key)
+                    texts.append(message.text)
+                    print(f"[WF] Agent [{message.author_name}]: {message.text[:120]}", flush=True)
 
-    def _is_noise(text: str) -> bool:
-        """Check if text is a handoff routing message, not a real response."""
-        stripped = text.strip()
-        # Too short to be a real response
-        if len(stripped) < 20:
-            return True
-        # Contains handoff/routing patterns
-        if any(p in stripped for p in NOISE_PATTERNS):
-            # But only if it's a SHORT message (real reports can mention agent names)
-            if len(stripped) < 100:
-                return True
-        return False
-
-    def _collect_texts(events: list[Any]) -> list[Any]:
-        """Extract agent text and HITL requests from events."""
-        pending = []
-        print(f"[WORKFLOW] Processing {len(events)} events", flush=True)
-        for event in events:
-            print(f"[WORKFLOW] Event type={event.type} data_type={type(event.data).__name__}", flush=True)
-            if event.type == "output":
-                data = event.data
-                if isinstance(data, AgentResponse):
-                    for message in data.messages:
-                        print(f"[WORKFLOW] Message author={message.author_name} text={message.text[:100] if message.text else 'None'}", flush=True)
-                        if not message.text:
-                            continue
-                        key = f"{message.author_name}:{message.text[:100]}"
+        elif event.type == "request_info" and isinstance(event.data, HandoffAgentUserRequest):
+            # Extract text from the agent response that accompanies the HITL request
+            if event.data.agent_response:
+                for message in event.data.agent_response.messages:
+                    if message.text:
+                        key = f"{message.author_name}:{message.text[:80]}"
                         if key in seen:
                             continue
                         seen.add(key)
-                        if _is_noise(message.text):
-                            logger.info("Filtered noise: %s", message.text[:80])
-                        else:
-                            logger.info("Agent text [%s]: %s", message.author_name, message.text[:120])
-                            agent_texts.append(message.text)
+                        texts.append(message.text)
+                        print(f"[WF] HITL [{message.author_name}]: {message.text[:120]}", flush=True)
+            # Keep the RAW EVENT (has .request_id)
+            pending.append(event)
+            print(f"[WF] HITL request pending (id={event.request_id})", flush=True)
 
-            elif event.type == "request_info" and isinstance(
-                event.data, HandoffAgentUserRequest
-            ):
-                # Collect the agent message that comes with the HITL request
-                if hasattr(event.data, "agent_response") and event.data.agent_response:
-                    for message in event.data.agent_response.messages:
-                        if message.text:
-                            key = f"{message.author_name}:{message.text[:100]}"
-                            if key in seen:
-                                continue
-                            seen.add(key)
-                            if _is_noise(message.text):
-                                logger.info("Filtered HITL noise: %s", message.text[:80])
-                            else:
-                                logger.info("HITL agent text [%s]: %s", message.author_name, message.text[:120])
-                                agent_texts.append(message.text)
-                logger.info("HITL request received — will auto-continue")
-                pending.append(event)
-        return pending
+    return texts, pending
+
+
+# ── Run workflow ─────────────────────────────────────────────
+
+async def run_agent_workflow(operator_text: str) -> str:
+    """Send operator text through the MAF workflow and return agent response.
+    
+    Pattern copied from runner.py run_demo():
+    1. workflow.run(text, stream=True) → collect events
+    2. Process events → get texts + HITL requests
+    3. Auto-respond to HITL with operator text → continue workflow
+    4. Repeat until no more HITL requests
+    5. Return last agent text
+    """
+    workflow = _build_workflow()
+    print(f"[WF] Starting: {operator_text[:100]}", flush=True)
+
+    all_texts: list[str] = []
 
     try:
-        # Run workflow in NON-streaming mode — lets HandoffBuilder complete
-        # the full chain (Orchestrator → FieldSpecialist → Recon → MCP tools)
-        # before pausing for HITL
-        print(f"[WORKFLOW] Starting workflow with: {operator_text[:100]}", flush=True)
-        result = await workflow.run(operator_text)
-        
-        # result is the final AgentResponse or a list of events
-        print(f"[WORKFLOW] Result type: {type(result).__name__}", flush=True)
-        
-        # WorkflowRunResult is a list with get_outputs() and get_request_info_events()
-        outputs = result.get_outputs() if hasattr(result, 'get_outputs') else []
-        requests = result.get_request_info_events() if hasattr(result, 'get_request_info_events') else []
-        
-        print(f"[WORKFLOW] Outputs: {len(outputs)}, HITL requests: {len(requests)}", flush=True)
-        
-        # Extract text from outputs
-        for output in outputs:
-            data = output.data if hasattr(output, 'data') else output
-            print(f"[WORKFLOW] Output type: {type(data).__name__} dir={[a for a in dir(data) if not a.startswith('_') and a != 'model_fields']}", flush=True)
-            
-            if isinstance(data, AgentResponse) or type(data).__name__ == 'AgentResponse':
-                msgs = getattr(data, 'messages', [])
-                print(f"[WORKFLOW] AgentResponse messages={len(msgs)}", flush=True)
-                if not msgs:
-                    # Try other attributes
-                    for attr in ['text', 'content', 'value']:
-                        val = getattr(data, attr, None)
-                        if val:
-                            print(f"[WORKFLOW] AgentResponse.{attr} = {str(val)[:200]}", flush=True)
-                            if not _is_noise(str(val)):
-                                agent_texts.append(str(val))
-                for message in msgs:
-                    if hasattr(message, 'text') and message.text:
-                        print(f"[WORKFLOW] Agent [{getattr(message, 'author_name', '?')}]: {message.text[:150]}", flush=True)
-                        if not _is_noise(message.text):
-                            key = f"{getattr(message, 'author_name', '')}:{message.text[:100]}"
-                            if key not in seen:
-                                seen.add(key)
-                                agent_texts.append(message.text)
-        # ── HITL auto-response loop ──────────────────────────────
-        # If the workflow paused for HITL (Orchestrator waiting for
-        # operator confirmation before executing handoff), respond
-        # automatically so the agents can continue working.
-        hitl_rounds = 0
-        while requests and hitl_rounds < 5 and not agent_texts:
-            hitl_rounds += 1
-            print(f"[WORKFLOW] HITL round {hitl_rounds}: responding to {len(requests)} requests", flush=True)
-            
-            responses = {}
-            for req_event in requests:
-                req = req_event.data if hasattr(req_event, 'data') else req_event
-                responses[req.request_id] = HandoffAgentUserRequest.create_response(
-                    "Recibido. Proceda con el análisis completo."
-                )
-            
-            result = await workflow.run(responses=responses)
-            print(f"[WORKFLOW] HITL round {hitl_rounds} result type: {type(result).__name__}", flush=True)
-            
-            # Extract outputs from this round
-            outputs = result.get_outputs() if hasattr(result, 'get_outputs') else []
-            requests = result.get_request_info_events() if hasattr(result, 'get_request_info_events') else []
-            print(f"[WORKFLOW] Round {hitl_rounds}: {len(outputs)} outputs, {len(requests)} HITL requests", flush=True)
-            
-            for output in outputs:
-                data = output.data if hasattr(output, 'data') else output
-                if hasattr(data, 'messages'):
-                    for message in data.messages:
-                        if hasattr(message, 'text') and message.text:
-                            print(f"[WORKFLOW] R{hitl_rounds} [{getattr(message, 'author_name', '?')}]: {message.text[:150]}", flush=True)
-                            if not _is_noise(message.text):
-                                key = f"{getattr(message, 'author_name', '')}:{message.text[:100]}"
-                                if key not in seen:
-                                    seen.add(key)
-                                    agent_texts.append(message.text)
+        # Step 1: Initial run (streaming, like runner.py)
+        result = workflow.run(operator_text, stream=True)
+        events = [event async for event in result]
+        print(f"[WF] Initial: {len(events)} events", flush=True)
 
-            for req_event in requests:
-                req = req_event.data if hasattr(req_event, 'data') else req_event
-                if hasattr(req, 'agent_response') and req.agent_response:
-                    for msg in req.agent_response.messages:
-                        if hasattr(msg, 'text') and msg.text:
-                            print(f"[WORKFLOW] R{hitl_rounds} HITL [{getattr(msg, 'author_name', '?')}]: {msg.text[:150]}", flush=True)
-                            if not _is_noise(msg.text):
-                                key = f"{getattr(msg, 'author_name', '')}:{msg.text[:100]}"
-                                if key not in seen:
-                                    seen.add(key)
-                                    agent_texts.append(msg.text)
+        texts, pending = _process_events(events)
+        all_texts.extend(texts)
+
+        # Step 2: Auto-respond to HITL requests (max 5 rounds)
+        round_num = 0
+        while pending and round_num < 5:
+            round_num += 1
+            print(f"[WF] HITL round {round_num}: {len(pending)} requests", flush=True)
+
+            # Build responses dict: event.request_id → response
+            # Use the original operator text as the response (like demo scenario)
+            responses = {
+                req_event.request_id: HandoffAgentUserRequest.create_response(operator_text)
+                for req_event in pending
+            }
+
+            # Continue workflow (non-streaming, like runner.py)
+            events = await workflow.run(responses=responses)
+            print(f"[WF] Round {round_num}: {len(events)} events", flush=True)
+
+            texts, pending = _process_events(events)
+            all_texts.extend(texts)
+
+        # Terminate any remaining
+        if pending:
+            print(f"[WF] Terminating {len(pending)} remaining requests", flush=True)
+            responses = {
+                req_event.request_id: HandoffAgentUserRequest.terminate()
+                for req_event in pending
+            }
+            events = await workflow.run(responses=responses)
+            texts, _ = _process_events(events)
+            all_texts.extend(texts)
 
     except Exception as e:
-        print(f"[WORKFLOW] Error: {e}", flush=True)
+        print(f"[WF] Error: {e}", flush=True)
         logger.error("Workflow error: %s", e, exc_info=True)
         return f"Error procesando la solicitud: {e}"
 
-    if not agent_texts:
-        print("[WORKFLOW] No agent texts collected!", flush=True)
+    if not all_texts:
+        print("[WF] No texts collected!", flush=True)
         return "No se recibió respuesta de los agentes. Intente de nuevo."
 
-    # Return the last substantive agent message
-    print(f"[WORKFLOW] Returning response ({len(agent_texts)} texts, using last)", flush=True)
-    return agent_texts[-1]
+    # Filter out noise (handoff function names)
+    real_texts = [t for t in all_texts if len(t) > 30 and "_to_" not in t]
+    
+    if real_texts:
+        print(f"[WF] Returning ({len(real_texts)} real texts, using last)", flush=True)
+        return real_texts[-1]
+    
+    # Fallback: return last text even if short
+    print(f"[WF] Returning fallback ({len(all_texts)} texts, using last)", flush=True)
+    return all_texts[-1]
