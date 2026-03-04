@@ -67,17 +67,28 @@ async def run_agent_workflow(operator_text: str) -> str:
     # Patterns to filter out (handoff function names, not real responses)
     NOISE_PATTERNS = [
         "transfer_to_",
+        "_to_",           # catches garbled versions like "brtc_to_"
         "handoff",
         "HANDOFF",
+        "FieldSpecialist",
+        "CaseManager",
+        "ReconAgent",
+        "VehicleExpert",
+        "Coordinator",
     ]
 
     def _is_noise(text: str) -> bool:
         """Check if text is a handoff routing message, not a real response."""
         stripped = text.strip()
-        return (
-            len(stripped) < 5
-            or any(p in stripped for p in NOISE_PATTERNS)
-        )
+        # Too short to be a real response
+        if len(stripped) < 20:
+            return True
+        # Contains handoff/routing patterns
+        if any(p in stripped for p in NOISE_PATTERNS):
+            # But only if it's a SHORT message (real reports can mention agent names)
+            if len(stripped) < 100:
+                return True
+        return False
 
     def _collect_texts(events: list[Any]) -> list[Any]:
         """Extract agent text and HITL requests from events."""
@@ -93,7 +104,10 @@ async def run_agent_workflow(operator_text: str) -> str:
                         if key in seen:
                             continue
                         seen.add(key)
-                        if not _is_noise(message.text):
+                        if _is_noise(message.text):
+                            logger.info("Filtered noise: %s", message.text[:80])
+                        else:
+                            logger.info("Agent text [%s]: %s", message.author_name, message.text[:120])
                             agent_texts.append(message.text)
 
             elif event.type == "request_info" and isinstance(
@@ -107,8 +121,12 @@ async def run_agent_workflow(operator_text: str) -> str:
                             if key in seen:
                                 continue
                             seen.add(key)
-                            if not _is_noise(message.text):
+                            if _is_noise(message.text):
+                                logger.info("Filtered HITL noise: %s", message.text[:80])
+                            else:
+                                logger.info("HITL agent text [%s]: %s", message.author_name, message.text[:120])
                                 agent_texts.append(message.text)
+                logger.info("HITL request received — will auto-continue")
                 pending.append(event)
         return pending
 
@@ -147,7 +165,9 @@ async def run_agent_workflow(operator_text: str) -> str:
         return f"Error processing request: {e}"
 
     if not agent_texts:
-        return "No response from agents."
+        logger.warning("No agent texts collected after %d HITL rounds", rounds)
+        return "No se recibió respuesta de los agentes. Intente de nuevo."
 
     # Return the last substantive agent message
+    logger.info("Returning agent response (%d texts collected, using last)", len(agent_texts))
     return agent_texts[-1]
