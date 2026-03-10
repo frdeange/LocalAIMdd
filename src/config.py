@@ -6,6 +6,7 @@ All environment-driven settings in one place.
 Environment variables:
     OLLAMA_HOST       Ollama server URL     (default: http://localhost:11434)
     OLLAMA_MODEL_ID   Model to use          (default: qwen2.5:7b)
+    OLLAMA_THINK      Enable reasoning      (default: false)
     BMS_LOG_LEVEL     Logging verbosity     (default: INFO)
     MCP_CAMERA_URL    MCP Camera server     (default: http://localhost:8090/mcp)
     MCP_WEATHER_URL   MCP Weather server    (default: http://localhost:8091/mcp)
@@ -21,6 +22,7 @@ load_dotenv()
 # ── Ollama / LLM ─────────────────────────────────────────────
 OLLAMA_HOST: str = os.getenv("OLLAMA_HOST", "http://localhost:11434")
 OLLAMA_MODEL_ID: str = os.getenv("OLLAMA_MODEL_ID", "qwen2.5:7b")
+OLLAMA_THINK: bool = os.getenv("OLLAMA_THINK", "true").lower() in ("true", "1", "yes")
 
 # ── MCP Services ─────────────────────────────────────────────
 MCP_CAMERA_URL: str = os.getenv("MCP_CAMERA_URL", "http://localhost:8090/mcp")

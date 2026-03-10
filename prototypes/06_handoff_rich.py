@@ -58,9 +58,14 @@ def build_workflow(client):
         .add_handoff(orchestrator, [case_manager, field_specialist])
         .add_handoff(field_specialist, [case_manager, orchestrator])
         .add_handoff(case_manager, [field_specialist, orchestrator])
-        # No autonomous mode — all agents participate in HITL.
-        # Each agent must hand off when done with their task.
-        # The Orchestrator mediates the operator interaction.
+        # CaseManager runs autonomously: after tool calls it gets
+        # extra turns to invoke the handoff tool to FieldSpecialist.
+        # FieldSpecialist is NOT autonomous — uses HITL. Empty first
+        # responses are handled by auto-retry in the event loop.
+        .with_autonomous_mode(
+            agents=[case_manager],
+            turn_limits={"CaseManager": 3},
+        )
         .build()
     )
     return workflow
@@ -68,13 +73,23 @@ def build_workflow(client):
 
 # ── Event processing ──────────────────────────────────────────
 
-def process_events(events):
+def process_events(events, debug=False):
     """Process workflow events. Print messages. Return pending HITL requests."""
     agent_texts = []
     pending = []
     seen = set()
 
     for event in events:
+        if debug:
+            data_summary = type(event.data).__name__
+            if hasattr(event.data, 'text') and event.data.text:
+                data_summary += f" text={event.data.text[:60]!r}"
+            elif hasattr(event.data, 'agent_response'):
+                ar = event.data.agent_response
+                msgs = [m.text[:40] for m in ar.messages if m.text] if ar and ar.messages else []
+                data_summary += f" msgs={msgs}"
+            print(f"  [DBG] event.type={event.type!r} data={data_summary}")
+
         if event.type == "handoff_sent":
             print_handoff(event.data.source, event.data.target)
 
@@ -103,16 +118,22 @@ def process_events(events):
         elif event.type == "request_info" and isinstance(
             event.data, HandoffAgentUserRequest
         ):
+            has_text = False
             if event.data.agent_response:
                 for msg in event.data.agent_response.messages:
                     if msg.text:
                         key = f"{msg.author_name}:{msg.text[:80]}"
                         if key in seen:
+                            has_text = True  # Already shown via output event
                             continue
                         seen.add(key)
                         speaker = msg.author_name or msg.role
                         print_agent_message(speaker, msg.text)
                         agent_texts.append(msg.text)
+                        has_text = True
+            if not has_text and not agent_texts:
+                # No text shown at all in this batch — truly empty response.
+                print("\n  [Sistema]: El agente está listo. Proporcione información adicional.")
             pending.append(event)
 
     return agent_texts, pending
@@ -144,7 +165,20 @@ async def main():
 
     result = workflow.run(initial, stream=True)
     events = [event async for event in result]
-    agent_texts, pending = process_events(events)
+    agent_texts, pending = process_events(events, debug=True)
+
+    # Auto-retry: if FieldSpecialist produced empty response, nudge it
+    if pending and not agent_texts:
+        print("\n  [auto-retry: empty agent response, nudging...]\n")
+        responses = {
+            req.request_id: HandoffAgentUserRequest.create_response(
+                "Operador esperando. Proporcione su respuesta."
+            )
+            for req in pending
+        }
+        events = await workflow.run(responses=responses)
+        new_texts, pending = process_events(events, debug=True)
+        agent_texts.extend(new_texts)
 
     # HITL loop
     while pending:
@@ -172,8 +206,21 @@ async def main():
             for req in pending
         }
         events = await workflow.run(responses=responses)
-        new_texts, pending = process_events(events)
+        new_texts, pending = process_events(events, debug=True)
         agent_texts.extend(new_texts)
+
+        # Auto-retry: if agent produced empty response after user input, nudge it
+        if pending and not new_texts:
+            print("\n  [auto-retry: empty agent response, nudging...]\n")
+            responses = {
+                req.request_id: HandoffAgentUserRequest.create_response(
+                    "Operador esperando. Proporcione su respuesta."
+                )
+                for req in pending
+            }
+            events = await workflow.run(responses=responses)
+            retry_texts, pending = process_events(events, debug=True)
+            agent_texts.extend(retry_texts)
 
     print(f"\n{SEP}")
     print(f"  Done. Messages received: {len(agent_texts)}")

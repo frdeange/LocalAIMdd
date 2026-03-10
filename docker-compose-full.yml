@@ -1,0 +1,250 @@
+# ──────────────────────────────────────────────────────────────
+# Docker Compose - BMS Operations PoC  (FULL STACK — GPU only)
+# ──────────────────────────────────────────────────────────────
+# All services for the BMS Operations platform:
+#   - Ollama LLM (GPU)
+#   - PostgreSQL database
+#   - BMS API (FastAPI + frontends)
+#   - MCP services (BMS, Camera, Weather)
+#   - Speech Service (STT/TTS, GPU)
+#
+# Usage:
+#   docker compose -f docker-compose-full.yml up -d --build
+#   docker compose -f docker-compose-full.yml down
+#   docker compose -f docker-compose-full.yml logs -f
+#
+# Verify:
+#   curl http://localhost:11434/api/tags          # Ollama
+#   curl http://localhost:8000/api/health         # BMS API
+#   curl http://localhost:8090/mcp               # MCP Camera
+#   curl http://localhost:8091/mcp               # MCP Weather
+#   curl http://localhost:8093/mcp               # MCP BMS
+# ──────────────────────────────────────────────────────────────
+
+services:
+
+  # ════════════════════════════════════════════════════════════
+  # ── Infrastructure ─────────────────────────────────────────
+  # ════════════════════════════════════════════════════════════
+
+  # ── Ollama (GPU only) ──────────────────────────────────────
+  ollama-gpu:
+    image: ollama/ollama:latest
+    container_name: bms-ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama-models:/root/.ollama
+    environment:
+      - OLLAMA_HOST=0.0.0.0
+      - NVIDIA_VISIBLE_DEVICES=all
+      - NVIDIA_DRIVER_CAPABILITIES=compute,utility
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── Ollama Model Init (one-shot) ───────────────────────────
+  ollama-init:
+    image: ollama/ollama:latest
+    container_name: bms-ollama-init
+    depends_on:
+      ollama-gpu:
+        condition: service_healthy
+    environment:
+      - OLLAMA_HOST=bms-ollama:11434
+      - OLLAMA_MODEL_ID=${OLLAMA_MODEL_ID:-qwen3.5:4b}
+    volumes:
+      - ./scripts/init-ollama.sh:/init-ollama.sh:ro
+    entrypoint: ["/bin/bash", "/init-ollama.sh"]
+    restart: "no"
+
+  # ── PostgreSQL ─────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: bms-postgres
+    ports:
+      - "5432:5432"
+    environment:
+      POSTGRES_USER: bms_ops
+      POSTGRES_PASSWORD: BmsOps2026
+      POSTGRES_DB: bms_ops
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./mcp_services/schema.sql:/docker-entrypoint-initdb.d/01-schema.sql:ro
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bms_ops -d bms_ops"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+      start_period: 10s
+
+  # ════════════════════════════════════════════════════════════
+  # ── MCP Services ───────────────────────────────────────────
+  # ════════════════════════════════════════════════════════════
+
+  # ── MCP Camera (simulated) ─────────────────────────────────
+  mcp-camera:
+    build:
+      context: .
+      dockerfile: mcp_services/Dockerfile.camera
+    container_name: bms-mcp-camera
+    ports:
+      - "8090:8090"
+    environment:
+      CAMERA_SERVER_PORT: "8090"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_SERVICE_NAME: "mcp-camera"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8090/mcp')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── MCP Weather (simulated) ────────────────────────────────
+  mcp-weather:
+    build:
+      context: .
+      dockerfile: mcp_services/Dockerfile.weather
+    container_name: bms-mcp-weather
+    ports:
+      - "8091:8091"
+    environment:
+      WEATHER_SERVER_PORT: "8091"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_SERVICE_NAME: "mcp-weather"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8091/mcp')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  # ── MCP BMS (PostgreSQL-backed) ────────────────────────────
+  mcp-bms:
+    build:
+      context: .
+      dockerfile: mcp_services/Dockerfile.bms
+    container_name: bms-mcp-bms
+    ports:
+      - "8093:8093"
+    environment:
+      BMS_SERVER_PORT: "8093"
+      DATABASE_URL: "postgresql://bms_ops:BmsOps2026@bms-postgres:5432/bms_ops"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_SERVICE_NAME: "mcp-bms"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8093/mcp')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  # ════════════════════════════════════════════════════════════
+  # ── Application Services ───────────────────────────────────
+  # ════════════════════════════════════════════════════════════
+
+  # ── Speech Service (STT + TTS, GPU) ────────────────────────
+  speech-service:
+    build:
+      context: .
+      dockerfile: speech_service/Dockerfile
+    container_name: bms-speech
+    ports:
+      - "8092:8092"
+    environment:
+      SPEECH_HOST: "0.0.0.0"
+      SPEECH_PORT: "8092"
+      WHISPER_MODEL: "small"
+      WHISPER_DEVICE: "cuda"
+      WHISPER_COMPUTE: "float16"
+      PIPER_MODEL_PATH: "/app/models/es_ES-davefx-medium.onnx"
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_SERVICE_NAME: "speech-service"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8092/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  # ── BMS API (FastAPI + Dashboard + Walkie-Talkie) ──────────
+  bms-api:
+    build:
+      context: .
+      dockerfile: bms_api/Dockerfile
+    container_name: bms-api
+    ports:
+      - "8000:8000"
+    environment:
+      # Server
+      API_HOST: "0.0.0.0"
+      API_PORT: "8000"
+      # Database
+      DATABASE_URL: "postgresql://bms_ops:BmsOps2026@bms-postgres:5432/bms_ops"
+      # Ollama LLM
+      OLLAMA_HOST: "http://bms-ollama:11434"
+      OLLAMA_MODEL_ID: "${OLLAMA_MODEL_ID:-qwen3.5:4b}"
+      # MCP Services (internal Docker network)
+      MCP_CAMERA_URL: "http://bms-mcp-camera:8090/mcp"
+      MCP_WEATHER_URL: "http://bms-mcp-weather:8091/mcp"
+      MCP_BMS_URL: "http://bms-mcp-bms:8093/mcp"
+      # Speech Service
+      SPEECH_SERVICE_URL: "http://bms-speech:8092"
+      # Telemetry (disabled by default in local dev)
+      OTEL_EXPORTER_OTLP_ENDPOINT: ""
+      OTEL_SERVICE_NAME: "bms-api"
+      # Application
+      BMS_LOG_LEVEL: "INFO"
+      BMS_MAX_TURNS: "30"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama-gpu:
+        condition: service_healthy
+      mcp-camera:
+        condition: service_started
+      mcp-weather:
+        condition: service_started
+      mcp-bms:
+        condition: service_started
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8000/api/health')\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+# ── Volumes ───────────────────────────────────────────────────
+volumes:
+  ollama-models:
+    name: bms-ollama-models
+  postgres-data:
+    name: bms-postgres-data

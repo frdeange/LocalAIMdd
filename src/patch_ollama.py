@@ -20,6 +20,7 @@ from typing import Any
 
 def _apply_patch() -> None:
     import ollama
+    from src.config import OLLAMA_THINK
 
     original_chat = ollama.AsyncClient.chat
 
@@ -32,6 +33,9 @@ def _apply_patch() -> None:
     @functools.wraps(original_chat)
     async def _patched_chat(self: Any, *args: Any, **kwargs: Any) -> Any:
         filtered = {k: v for k, v in kwargs.items() if k in valid_params}
+        # Inject think setting unless explicitly provided by caller
+        if "think" not in filtered:
+            filtered["think"] = OLLAMA_THINK
         return await original_chat(self, *args, **filtered)
 
     _patched_chat._patched_for_kwargs = True  # type: ignore[attr-defined]

@@ -58,7 +58,7 @@ calls. The Orchestrator decides who to transfer to next.
 | qwen2.5:14b | ✅ Reliable | Handoff works. Asks for coordinates. MCP tools execute correctly. Best overall result. |
 | llama3.1:8b | ✅ Reliable | Always executes tool call. But too proactive — invents coordinates instead of asking. |
 | phi4-mini | ❌ Broken | Generates raw JSON tool definition as text. Not usable. |
-| qwen3.5:4b | ❌ Does not hand off | Orchestrator keeps the conversation, never routes to specialists. |
+| qwen3.5:4b | ✅ Reliable | Powerful and valuable responsible. Best results so far, with some problems if agent instructions are unclear. |
 
 #### Key findings:
 

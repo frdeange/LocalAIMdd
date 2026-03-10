@@ -79,7 +79,7 @@ services:
         required: false
     environment:
       - OLLAMA_HOST=bms-ollama:11434
-      - OLLAMA_MODEL_ID=${OLLAMA_MODEL_ID:-qwen2.5:3b}
+      - OLLAMA_MODEL_ID=${OLLAMA_MODEL_ID:-qwen3.5:4b}
     volumes:
       - ./scripts/init-ollama.sh:/init-ollama.sh:ro
     entrypoint: ["/bin/bash", "/init-ollama.sh"]
